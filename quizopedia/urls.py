@@ -17,7 +17,18 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from report_cards.views import (
+    RoleBasedLoginView,
+    admin_dashboard,
+    home,
+    student_dashboard,
+)
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', home, name='home'),
+    path('accounts/login/', RoleBasedLoginView.as_view(), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
+    path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
+    path('dashboard/student/', student_dashboard, name='student_dashboard'),
 ]
