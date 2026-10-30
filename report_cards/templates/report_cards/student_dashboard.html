@@ -12,6 +12,7 @@
         .mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #29443d; color: #fff; }
         .account { display: flex; align-items: center; gap: 14px; color: #66746d; font-size: 13px; }
         .logout { border: 0; padding: 9px 13px; border-radius: 7px; background: #f0f3f0; color: #34473f; cursor: pointer; font: inherit; font-weight: 650; }
+        .profile-link { color: #356348; font-size: 13px; font-weight: 650; text-decoration: none; }
         main { width: min(1000px, calc(100% - 40px)); margin: 52px auto; }
         .welcome { position: relative; overflow: hidden; padding: clamp(28px, 6vw, 56px); border-radius: 16px; background: #29443d; color: #fff; }
         .welcome::after { position: absolute; top: -110px; right: -80px; width: 350px; height: 350px; border: 1px solid #ffffff22; border-radius: 50%; content: ""; box-shadow: 0 0 0 44px #ffffff09, 0 0 0 88px #ffffff07; }
@@ -40,6 +41,7 @@
         <div class="brand"><span class="mark" aria-hidden="true">Q</span> Quizopedia</div>
         <div class="account">
             <span>{{ display_name }}</span>
+            <a class="profile-link" href="{% url 'profile' %}">Profile</a>
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
                 <button class="logout" type="submit">Sign out</button>
@@ -64,7 +66,7 @@
             <article class="card">
                 <div class="card-label">Email address</div>
                 <div class="card-value">{{ request.user.email|default:"Not provided" }}</div>
-                <p class="card-note">For changes to your account details, contact your school administrator.</p>
+                <p class="card-note"><a href="{% url 'student_profile_edit' %}">Request a profile update</a>. Changes are applied after admin approval.</p>
             </article>
         </section>
         <div class="note">Your learning activity and quiz results will appear here as they become available.</div>

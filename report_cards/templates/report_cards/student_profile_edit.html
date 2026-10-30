@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Request profile update | Quizopedia</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f6f4ef; color: #26332f; font-family: Inter, "Segoe UI", Arial, sans-serif; }
+        main { width: min(600px, calc(100% - 40px)); margin: 48px auto; }
+        a { color: #356348; font-weight: 650; text-decoration: none; }
+        h1 { margin: 10px 0; font-family: Georgia, "Times New Roman", serif; font-size: 38px; font-weight: 400; }
+        .intro { margin: 0 0 24px; color: #758078; font-size: 14px; line-height: 1.6; }
+        .card { padding: 26px; border: 1px solid #e4e8e4; border-radius: 12px; background: #fff; }
+        .field { margin: 18px 0; }
+        label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 650; }
+        input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #d8d9d2; border-radius: 7px; font: inherit; }
+        .errors { color: #9c3c2a; font-size: 12px; }
+        .notice { margin-bottom: 18px; padding: 13px 15px; border-radius: 8px; background: #fff7e6; color: #746748; font-size: 13px; line-height: 1.6; }
+        button { padding: 11px 15px; border: 0; border-radius: 7px; background: #29443d; color: #fff; cursor: pointer; font: inherit; font-weight: 650; }
+        .back { margin-left: 14px; }
+    </style>
+</head>
+<body>
+    <main>
+        <a href="{% url 'profile' %}">Back to profile</a>
+        <h1>Request a profile update</h1>
+        <p class="intro">Submit your current details below. Your existing profile stays unchanged until an administrator approves this request.</p>
+        <section class="card">
+            {% if pending_change %}
+                <div class="notice">If you already have an update awaiting approval, submitting this form replaces that pending request.</div>
+            {% endif %}
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                    <div class="field">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.errors %}<div class="errors">{{ field.errors }}</div>{% endif %}
+                    </div>
+                {% endfor %}
+                {% if form.non_field_errors %}<div class="errors">{{ form.non_field_errors }}</div>{% endif %}
+                <button type="submit">Submit for approval</button>
+                <a class="back" href="{% url 'profile' %}">Cancel</a>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

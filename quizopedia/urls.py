@@ -21,7 +21,10 @@ from report_cards.views import (
     RoleBasedLoginView,
     admin_dashboard,
     home,
+    profile,
+    review_student_profile_change,
     student_dashboard,
+    student_profile_edit,
 )
 
 urlpatterns = [
@@ -31,4 +34,11 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
     path('dashboard/student/', student_dashboard, name='student_dashboard'),
+    path('profile/', profile, name='profile'),
+    path('profile/student/edit/', student_profile_edit, name='student_profile_edit'),
+    path(
+        'profile/changes/<int:change_id>/<str:decision>/',
+        review_student_profile_change,
+        name='review_student_profile_change',
+    ),
 ]
