@@ -1,8 +1,28 @@
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from .models import Admin, Question, Student, StudentProfileChange, Subject
+
+
+class SampleDataTests(TestCase):
+    def test_sample_data_is_available_and_models_are_registered(self):
+        self.assertGreaterEqual(Student.objects.count(), 5)
+        self.assertGreaterEqual(Subject.objects.count(), 3)
+        self.assertGreaterEqual(Question.objects.count(), 10)
+        self.assertTrue(
+            all(
+                Question.objects.filter(subject=subject).exists()
+                for subject in Subject.objects.all()
+            )
+        )
+        self.assertTrue(
+            all(
+                admin.site.is_registered(model)
+                for model in (Admin, Student, StudentProfileChange, Subject, Question)
+            )
+        )
 
 
 class AuthenticationTests(TestCase):
@@ -254,7 +274,7 @@ class ProfileAndCatalogTests(TestCase):
 
     def test_subject_and_question_models_are_related(self):
         subject = Subject.objects.create(
-            name="Mathematics",
+            name="Catalog Test Mathematics",
             description="Numbers and problem solving.",
         )
         question = Question.objects.create(
