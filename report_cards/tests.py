@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Admin, Question, Student, StudentProfileChange, Subject
+from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
 
 
 class SampleDataTests(TestCase):
@@ -20,7 +20,23 @@ class SampleDataTests(TestCase):
         self.assertTrue(
             all(
                 admin.site.is_registered(model)
-                for model in (Admin, Student, StudentProfileChange, Subject, Question)
+                for model in (
+                    Admin,
+                    Student,
+                    StudentProfileChange,
+                    Subject,
+                    Question,
+                    Option,
+                )
+            )
+        )
+        self.assertTrue(
+            all(question.options.count() == 4 for question in Question.objects.all())
+        )
+        self.assertTrue(
+            all(
+                question.options.filter(is_answer=True).count() == 1
+                for question in Question.objects.all()
             )
         )
 
@@ -87,6 +103,30 @@ class AuthenticationTests(TestCase):
         response = self.client.get(reverse("admin_dashboard"))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_admin_dashboard_displays_registered_students_and_question_count(self):
+        user = self.create_user("dashboardadmin", is_staff=True)
+        student_user = self.create_user("registeredstudent")
+        Student.objects.create(
+            user=student_user,
+            name="Registered Student",
+            email="registered@example.com",
+            phone="555-0100",
+        )
+        subject = Subject.objects.create(name="Dashboard Test Subject")
+        Question.objects.create(subject=subject, question_text="A dashboard question?")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Registered students")
+        self.assertContains(response, "Total questions")
+        self.assertEqual(
+            response.context["registered_student_count"],
+            Student.objects.filter(user__isnull=False).count(),
+        )
+        self.assertEqual(response.context["question_count"], Question.objects.count())
 
     def test_dashboards_require_authentication(self):
         response = self.client.get(reverse("student_dashboard"))
@@ -280,11 +320,12 @@ class ProfileAndCatalogTests(TestCase):
         question = Question.objects.create(
             subject=subject,
             question_text="What is 2 + 2?",
-            option_a="3",
-            option_b="4",
-            option_c="5",
-            option_d="6",
-            correct_option=Question.Option.B,
+        )
+        answer = Option.objects.create(
+            question=question,
+            option_text="4",
+            is_answer=True,
         )
 
         self.assertEqual(subject.questions.get(), question)
+        self.assertEqual(question.options.get(), answer)

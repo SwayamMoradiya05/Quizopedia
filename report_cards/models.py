@@ -80,24 +80,26 @@ class Subject(models.Model):
 
 
 class Question(models.Model):
-    class Option(models.TextChoices):
-        A = "A", "A"
-        B = "B", "B"
-        C = "C", "C"
-        D = "D", "D"
-
     subject = models.ForeignKey(
         Subject,
         on_delete=models.CASCADE,
         related_name="questions",
     )
     question_text = models.TextField()
-    option_a = models.CharField(max_length=255)
-    option_b = models.CharField(max_length=255)
-    option_c = models.CharField(max_length=255)
-    option_d = models.CharField(max_length=255)
-    correct_option = models.CharField(max_length=1, choices=Option.choices)
     explanation = models.TextField(blank=True)
 
     def __str__(self):
         return self.question_text
+
+
+class Option(models.Model):
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="options",
+    )
+    option_text = models.CharField(max_length=255)
+    is_answer = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.option_text

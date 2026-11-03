@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import StudentProfileChangeForm
-from .models import Admin, Student, StudentProfileChange
+from .models import Admin, Question, Student, StudentProfileChange
 
 
 def _is_admin(user):
@@ -49,7 +49,10 @@ def admin_dashboard(request):
     context = {
         "student_count": Student.objects.count(),
         "admin_count": Admin.objects.count(),
-        "linked_student_count": Student.objects.filter(user__isnull=False).count(),
+        "registered_student_count": Student.objects.filter(
+            user__isnull=False
+        ).count(),
+        "question_count": Question.objects.count(),
         "students": Student.objects.select_related("user").order_by("name")[:6],
         "pending_profile_changes": StudentProfileChange.objects.filter(
             status=StudentProfileChange.Status.PENDING

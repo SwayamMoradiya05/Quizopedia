@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Admin, Question, Student, StudentProfileChange, Subject
+from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
 
 
 @admin.register(Admin)
@@ -40,6 +40,13 @@ class SubjectAdmin(admin.ModelAdmin):
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ("question_text", "subject", "correct_option")
-    list_filter = ("subject", "correct_option")
+    list_display = ("question_text", "subject")
+    list_filter = ("subject",)
     search_fields = ("question_text",)
+
+
+@admin.register(Option)
+class OptionAdmin(admin.ModelAdmin):
+    list_display = ("option_text", "question", "is_answer")
+    list_filter = ("is_answer",)
+    search_fields = ("option_text", "question__question_text")
