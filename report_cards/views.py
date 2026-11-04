@@ -8,8 +8,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import StudentProfileChangeForm
-from .models import Admin, Question, Student, StudentProfileChange
+from .forms import QuestionCreateForm, StudentProfileChangeForm
+from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
 
 
 def _is_admin(user):
@@ -59,6 +59,55 @@ def admin_dashboard(request):
         ).select_related("student"),
     }
     return render(request, "report_cards/admin_dashboard.html", context)
+
+
+@login_required
+def question_create(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    selected_subject = Subject.objects.filter(
+        pk=(
+            request.POST.get("subject")
+            if request.method == "POST"
+            else request.GET.get("subject")
+        )
+    ).first()
+    form = QuestionCreateForm(
+        request.POST or None,
+        initial={"subject": selected_subject},
+    )
+
+    if request.method == "POST" and form.is_valid():
+        question = form.save(commit=False)
+        with transaction.atomic():
+            question.save()
+            for label in ("A", "B", "C", "D"):
+                Option.objects.create(
+                    question=question,
+                    option_text=form.cleaned_data[f"option_{label.lower()}"],
+                    is_answer=form.cleaned_data["correct_option"] == label,
+                )
+        messages.success(request, "Question created successfully.")
+        return redirect(
+            f"{reverse('question_create')}?subject={question.subject_id}"
+        )
+
+    questions = (
+        selected_subject.questions.prefetch_related("options").order_by("pk")
+        if selected_subject
+        else Question.objects.none()
+    )
+    return render(
+        request,
+        "report_cards/question_create.html",
+        {
+            "form": form,
+            "selected_subject": selected_subject,
+            "questions": questions,
+            "subjects": Subject.objects.order_by("name"),
+        },
+    )
 
 
 @login_required

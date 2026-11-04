@@ -128,6 +128,68 @@ class AuthenticationTests(TestCase):
         )
         self.assertEqual(response.context["question_count"], Question.objects.count())
 
+    def test_admin_can_create_question_with_four_options_for_selected_subject(self):
+        admin_user = self.create_user("questionadmin", is_staff=True)
+        subject = Subject.objects.create(name="Question Form Subject")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("question_create"),
+            {
+                "subject": subject.pk,
+                "question_text": "Which number is even?",
+                "explanation": "Even numbers are divisible by two.",
+                "option_a": "3",
+                "option_b": "5",
+                "option_c": "8",
+                "option_d": "9",
+                "correct_option": "C",
+            },
+        )
+
+        question = Question.objects.get(question_text="Which number is even?")
+        self.assertRedirects(
+            response,
+            f"{reverse('question_create')}?subject={subject.pk}",
+        )
+        self.assertEqual(question.subject, subject)
+        self.assertEqual(question.options.count(), 4)
+        self.assertEqual(
+            question.options.get(is_answer=True).option_text,
+            "8",
+        )
+
+    def test_question_create_page_filters_questions_by_selected_subject(self):
+        admin_user = self.create_user("questionviewer", is_staff=True)
+        subject = Subject.objects.create(name="Filtered Question Subject")
+        other_subject = Subject.objects.create(name="Other Question Subject")
+        question = Question.objects.create(
+            subject=subject,
+            question_text="Question for the selected subject",
+        )
+        Question.objects.create(
+            subject=other_subject,
+            question_text="Question for another subject",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(
+            reverse("question_create"),
+            {"subject": subject.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, question.question_text)
+        self.assertNotContains(response, "Question for another subject")
+
+    def test_students_cannot_create_questions(self):
+        student_user = self.create_user("questionstudent")
+        self.client.force_login(student_user)
+
+        response = self.client.get(reverse("question_create"))
+
+        self.assertEqual(response.status_code, 403)
+
     def test_dashboards_require_authentication(self):
         response = self.client.get(reverse("student_dashboard"))
 
