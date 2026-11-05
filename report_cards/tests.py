@@ -1,9 +1,22 @@
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
+from .models import (
+    Admin,
+    Option,
+    Question,
+    Student,
+    StudentOTP,
+    StudentProfileChange,
+    Subject,
+)
 
 
 class SampleDataTests(TestCase):
@@ -78,6 +91,75 @@ class AuthenticationTests(TestCase):
         dashboard = self.client.get(reverse("student_dashboard"))
         self.assertEqual(dashboard.status_code, 200)
         self.assertContains(dashboard, "Test Student")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_student_login_creates_and_emails_expiring_otp(self):
+        user = self.create_user("otpstudent")
+        student = Student.objects.create(
+            user=user,
+            name="OTP Student",
+            email="otpstudent@example.com",
+            phone="555-0102",
+        )
+
+        response = self.client.post(
+            reverse("login"),
+            {"username": user.username, "password": "secure-test-password"},
+        )
+
+        self.assertRedirects(response, reverse("student_dashboard"))
+        otp = StudentOTP.objects.get(student=student)
+        self.assertRegex(otp.code, r"^\d{6}$")
+        self.assertGreater(otp.expires_at, timezone.now())
+        self.assertLessEqual(
+            otp.expires_at,
+            timezone.now() + timedelta(minutes=10),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [student.email])
+        self.assertIn(otp.code, mail.outbox[0].body)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_invalid_student_login_does_not_create_or_email_otp(self):
+        user = self.create_user("invalidotpstudent")
+        Student.objects.create(
+            user=user,
+            name="OTP Student",
+            email="otpstudent@example.com",
+            phone="555-0102",
+        )
+
+        self.client.post(
+            reverse("login"),
+            {"username": user.username, "password": "wrong-password"},
+        )
+
+        self.assertFalse(StudentOTP.objects.exists())
+        self.assertEqual(mail.outbox, [])
+
+    @patch("report_cards.views.send_mail", return_value=0)
+    def test_student_login_is_rejected_when_otp_email_cannot_be_sent(self, send_mail):
+        user = self.create_user("undeliverableotp")
+        student = Student.objects.create(
+            user=user,
+            name="OTP Student",
+            email="otpstudent@example.com",
+            phone="555-0102",
+        )
+
+        response = self.client.post(
+            reverse("login"),
+            {"username": user.username, "password": "secure-test-password"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "We couldn't email your OTP. Please try signing in again later.",
+            response.context["form"].non_field_errors(),
+        )
+        self.assertFalse(StudentOTP.objects.filter(student=student).exists())
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        send_mail.assert_called_once()
 
     def test_linked_admin_profile_receives_admin_dashboard(self):
         user = self.create_user("profileadmin")

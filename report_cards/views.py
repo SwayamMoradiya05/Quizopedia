@@ -1,7 +1,12 @@
+import secrets
+import smtplib
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import PermissionDenied
+from django.core.mail import send_mail
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -9,7 +14,15 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import QuestionCreateForm, StudentProfileChangeForm
-from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
+from .models import (
+    Admin,
+    Option,
+    Question,
+    Student,
+    StudentOTP,
+    StudentProfileChange,
+    Subject,
+)
 
 
 def _is_admin(user):
@@ -22,6 +35,48 @@ def _is_admin(user):
 
 class RoleBasedLoginView(LoginView):
     template_name = "registration/login.html"
+
+    def form_valid(self, form):
+        user = form.get_user()
+        student = (
+            None
+            if _is_admin(user)
+            else Student.objects.filter(user=user).first()
+        )
+        if student:
+            otp = StudentOTP.objects.create(
+                student=student,
+                code=f"{secrets.randbelow(1_000_000):06d}",
+                expires_at=timezone.now() + timedelta(minutes=10),
+            )
+            try:
+                sent_count = send_mail(
+                    "Your Quizopedia login OTP",
+                    (
+                        f"Your one-time password is {otp.code}. "
+                        "It expires in 10 minutes."
+                    ),
+                    None,
+                    [student.email],
+                    fail_silently=False,
+                )
+            except (OSError, smtplib.SMTPException):
+                otp.delete()
+                form.add_error(
+                    None,
+                    "We couldn't email your OTP. Please try signing in again later.",
+                )
+                return self.form_invalid(form)
+
+            if sent_count != 1:
+                otp.delete()
+                form.add_error(
+                    None,
+                    "We couldn't email your OTP. Please try signing in again later.",
+                )
+                return self.form_invalid(form)
+
+        return super().form_valid(form)
 
     def get_success_url(self):
         redirect_url = self.get_redirect_url()

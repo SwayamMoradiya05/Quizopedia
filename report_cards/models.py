@@ -35,6 +35,20 @@ class Student(models.Model):
         return self.name
 
 
+class StudentOTP(models.Model):
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="otps",
+    )
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"OTP for {self.student.name} (expires {self.expires_at})"
+
+
 class StudentProfileChange(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
