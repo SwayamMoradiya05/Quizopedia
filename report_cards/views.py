@@ -3,6 +3,8 @@ import smtplib
 from datetime import timedelta
 
 from django.contrib import messages
+from django.contrib.auth import login as auth_login
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import PermissionDenied
@@ -13,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import QuestionCreateForm, StudentProfileChangeForm
+from .forms import OTPVerificationForm, QuestionCreateForm, StudentProfileChangeForm
 from .models import (
     Admin,
     Option,
@@ -24,6 +26,12 @@ from .models import (
     Subject,
 )
 
+OTP_EXPIRATION = timedelta(minutes=10)
+OTP_RESEND_COOLDOWN = timedelta(seconds=60)
+PENDING_OTP_USER_SESSION_KEY = "pending_otp_user_id"
+PENDING_OTP_BACKEND_SESSION_KEY = "pending_otp_backend"
+PENDING_OTP_NEXT_SESSION_KEY = "pending_otp_next"
+
 
 def _is_admin(user):
     return (
@@ -33,48 +41,87 @@ def _is_admin(user):
     )
 
 
+def _send_student_otp(student):
+    otp = StudentOTP.objects.create(
+        student=student,
+        code=f"{secrets.randbelow(1_000_000):06d}",
+        expires_at=timezone.now() + OTP_EXPIRATION,
+    )
+    try:
+        sent_count = send_mail(
+            "Your Quizopedia login OTP",
+            (
+                f"Your one-time password is {otp.code}. "
+                f"It expires in {int(OTP_EXPIRATION.total_seconds() // 60)} minutes."
+            ),
+            None,
+            [student.email],
+            fail_silently=False,
+        )
+    except (OSError, smtplib.SMTPException):
+        otp.delete()
+        return False
+
+    if sent_count != 1:
+        otp.delete()
+        return False
+
+    student.otps.exclude(pk=otp.pk).delete()
+    return True
+
+
+def _pending_otp_student(request):
+    user_id = request.session.get(PENDING_OTP_USER_SESSION_KEY)
+    backend = request.session.get(PENDING_OTP_BACKEND_SESSION_KEY)
+    if user_id is None or backend is None:
+        return None, None
+
+    student = (
+        Student.objects.select_related("user")
+        .filter(user_id=user_id)
+        .first()
+    )
+    return student, backend
+
+
+def _otp_cooldown_seconds(otp, now):
+    if otp is None:
+        return 0
+    remaining = (otp.created_at + OTP_RESEND_COOLDOWN - now).total_seconds()
+    return max(0, int(remaining + 0.999))
+
+
 class RoleBasedLoginView(LoginView):
     template_name = "registration/login.html"
 
     def form_valid(self, form):
         user = form.get_user()
+        self.request.session.pop(PENDING_OTP_USER_SESSION_KEY, None)
+        self.request.session.pop(PENDING_OTP_BACKEND_SESSION_KEY, None)
+        self.request.session.pop(PENDING_OTP_NEXT_SESSION_KEY, None)
         student = (
             None
             if _is_admin(user)
             else Student.objects.filter(user=user).first()
         )
         if student:
-            otp = StudentOTP.objects.create(
-                student=student,
-                code=f"{secrets.randbelow(1_000_000):06d}",
-                expires_at=timezone.now() + timedelta(minutes=10),
-            )
-            try:
-                sent_count = send_mail(
-                    "Your Quizopedia login OTP",
-                    (
-                        f"Your one-time password is {otp.code}. "
-                        "It expires in 10 minutes."
-                    ),
-                    None,
-                    [student.email],
-                    fail_silently=False,
-                )
-            except (OSError, smtplib.SMTPException):
-                otp.delete()
-                form.add_error(
-                    None,
-                    "We couldn't email your OTP. Please try signing in again later.",
-                )
-                return self.form_invalid(form)
+            now = timezone.now()
+            latest_otp = student.otps.order_by("-created_at", "-pk").first()
+            if latest_otp is None or _otp_cooldown_seconds(latest_otp, now) == 0:
+                if not _send_student_otp(student):
+                    form.add_error(
+                        None,
+                        "We couldn't email your OTP. Please try signing in again later.",
+                    )
+                    return self.form_invalid(form)
 
-            if sent_count != 1:
-                otp.delete()
-                form.add_error(
-                    None,
-                    "We couldn't email your OTP. Please try signing in again later.",
-                )
-                return self.form_invalid(form)
+            redirect_url = self.get_redirect_url()
+            auth_logout(self.request)
+            self.request.session[PENDING_OTP_USER_SESSION_KEY] = user.pk
+            self.request.session[PENDING_OTP_BACKEND_SESSION_KEY] = user.backend
+            if redirect_url:
+                self.request.session[PENDING_OTP_NEXT_SESSION_KEY] = redirect_url
+            return redirect("student_otp_verify")
 
         return super().form_valid(form)
 
@@ -86,6 +133,72 @@ class RoleBasedLoginView(LoginView):
         if _is_admin(self.request.user):
             return reverse("admin_dashboard")
         return reverse("student_dashboard")
+
+
+def student_otp_verify(request):
+    student, backend = _pending_otp_student(request)
+    if student is None:
+        request.session.pop(PENDING_OTP_USER_SESSION_KEY, None)
+        request.session.pop(PENDING_OTP_BACKEND_SESSION_KEY, None)
+        request.session.pop(PENDING_OTP_NEXT_SESSION_KEY, None)
+        messages.error(request, "Please sign in again to request a verification code.")
+        return redirect("login")
+
+    form = OTPVerificationForm(request.POST or None)
+    latest_otp = student.otps.order_by("-created_at", "-pk").first()
+    now = timezone.now()
+    if request.method == "POST" and form.is_valid():
+        code_is_valid = (
+            latest_otp is not None
+            and latest_otp.expires_at > now
+            and secrets.compare_digest(latest_otp.code, form.cleaned_data["code"])
+        )
+        if not code_is_valid:
+            form.add_error("code", "That code is incorrect or has expired.")
+        elif not student.user.is_active:
+            request.session.pop(PENDING_OTP_USER_SESSION_KEY, None)
+            request.session.pop(PENDING_OTP_BACKEND_SESSION_KEY, None)
+            request.session.pop(PENDING_OTP_NEXT_SESSION_KEY, None)
+            messages.error(request, "This account is inactive. Please contact your school.")
+            return redirect("login")
+        else:
+            redirect_url = request.session.pop(PENDING_OTP_NEXT_SESSION_KEY, None)
+            request.session.pop(PENDING_OTP_USER_SESSION_KEY, None)
+            request.session.pop(PENDING_OTP_BACKEND_SESSION_KEY, None)
+            student.otps.all().delete()
+            auth_login(request, student.user, backend=backend)
+            return redirect(redirect_url or reverse("student_dashboard"))
+
+    return render(
+        request,
+        "registration/otp_verify.html",
+        {
+            "form": form,
+            "cooldown_seconds": _otp_cooldown_seconds(latest_otp, now),
+            "otp_expired": latest_otp is None or latest_otp.expires_at <= now,
+        },
+    )
+
+
+@require_POST
+def resend_student_otp(request):
+    student, _ = _pending_otp_student(request)
+    if student is None:
+        request.session.pop(PENDING_OTP_USER_SESSION_KEY, None)
+        request.session.pop(PENDING_OTP_BACKEND_SESSION_KEY, None)
+        request.session.pop(PENDING_OTP_NEXT_SESSION_KEY, None)
+        messages.error(request, "Please sign in again to request a verification code.")
+        return redirect("login")
+
+    now = timezone.now()
+    latest_otp = student.otps.order_by("-created_at", "-pk").first()
+    if _otp_cooldown_seconds(latest_otp, now) > 0:
+        messages.error(request, "Please wait for the cooldown to finish before requesting another code.")
+    elif not _send_student_otp(student):
+        messages.error(request, "We couldn't email your OTP. Please try again later.")
+    else:
+        messages.success(request, "A new verification code has been sent to your email.")
+    return redirect("student_otp_verify")
 
 
 def home(request):

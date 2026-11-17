@@ -1,6 +1,28 @@
 from django import forms
+from django.core.validators import RegexValidator
 
 from .models import Question, StudentProfileChange
+
+
+class OTPVerificationForm(forms.Form):
+    code = forms.CharField(
+        label="One-time password",
+        max_length=6,
+        min_length=6,
+        validators=[
+            RegexValidator(
+                regex=r"^\d{6}$",
+                message="Enter the six-digit code from your email.",
+            )
+        ],
+        widget=forms.TextInput(
+            attrs={
+                "autocomplete": "one-time-code",
+                "inputmode": "numeric",
+                "pattern": "[0-9]{6}",
+            }
+        ),
+    )
 
 
 class StudentProfileChangeForm(forms.ModelForm):

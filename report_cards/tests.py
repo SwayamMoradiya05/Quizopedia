@@ -87,6 +87,13 @@ class AuthenticationTests(TestCase):
             {"username": user.username, "password": "secure-test-password"},
         )
 
+        self.assertRedirects(response, reverse("student_otp_verify"))
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        otp = StudentOTP.objects.get(student__user=user)
+        response = self.client.post(
+            reverse("student_otp_verify"),
+            {"code": otp.code},
+        )
         self.assertRedirects(response, reverse("student_dashboard"))
         dashboard = self.client.get(reverse("student_dashboard"))
         self.assertEqual(dashboard.status_code, 200)
@@ -107,7 +114,8 @@ class AuthenticationTests(TestCase):
             {"username": user.username, "password": "secure-test-password"},
         )
 
-        self.assertRedirects(response, reverse("student_dashboard"))
+        self.assertRedirects(response, reverse("student_otp_verify"))
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
         otp = StudentOTP.objects.get(student=student)
         self.assertRegex(otp.code, r"^\d{6}$")
         self.assertGreater(otp.expires_at, timezone.now())
@@ -118,6 +126,93 @@ class AuthenticationTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [student.email])
         self.assertIn(otp.code, mail.outbox[0].body)
+
+        response = self.client.post(
+            reverse("student_otp_verify"),
+            {"code": otp.code},
+        )
+        self.assertRedirects(response, reverse("student_dashboard"))
+        self.assertFalse(StudentOTP.objects.filter(student=student).exists())
+        self.assertEqual(
+            self.client.get(reverse("student_dashboard")).status_code,
+            200,
+        )
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_expired_student_otp_does_not_log_in(self):
+        user = self.create_user("expiredotpstudent")
+        student = Student.objects.create(
+            user=user,
+            name="Expired OTP Student",
+            email="expired@example.com",
+            phone="555-0103",
+        )
+        self.client.post(
+            reverse("login"),
+            {"username": user.username, "password": "secure-test-password"},
+        )
+        otp = StudentOTP.objects.get(student=student)
+
+        with patch("report_cards.views.timezone.now", return_value=otp.expires_at):
+            response = self.client.post(
+                reverse("student_otp_verify"),
+                {"code": otp.code},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "That code is incorrect or has expired.")
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+        self.assertRedirects(
+            self.client.get(reverse("student_dashboard")),
+            f"{reverse('login')}?next={reverse('student_dashboard')}",
+        )
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_resend_otp_enforces_cooldown_and_sends_a_new_code_afterward(self):
+        user = self.create_user("resendotpstudent")
+        student = Student.objects.create(
+            user=user,
+            name="Resend OTP Student",
+            email="resend@example.com",
+            phone="555-0104",
+        )
+        self.client.post(
+            reverse("login"),
+            {"username": user.username, "password": "secure-test-password"},
+        )
+        original_otp = StudentOTP.objects.get(student=student)
+
+        response = self.client.get(reverse("student_otp_verify"))
+        self.assertContains(response, "disabled")
+        self.assertContains(response, "You can request another code in")
+        response = self.client.post(reverse("resend_student_otp"))
+        self.assertRedirects(
+            response,
+            reverse("student_otp_verify"),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(StudentOTP.objects.filter(student=student).count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertContains(
+            self.client.get(reverse("student_otp_verify")),
+            "Please wait for the cooldown to finish",
+        )
+
+        StudentOTP.objects.filter(pk=original_otp.pk).update(
+            created_at=timezone.now() - timedelta(seconds=61),
+        )
+        response = self.client.post(reverse("resend_student_otp"))
+        self.assertRedirects(
+            response,
+            reverse("student_otp_verify"),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(StudentOTP.objects.filter(student=student).count(), 1)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertContains(
+            self.client.get(reverse("student_otp_verify")),
+            "A new verification code has been sent",
+        )
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_invalid_student_login_does_not_create_or_email_otp(self):

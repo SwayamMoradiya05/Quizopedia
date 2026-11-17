@@ -23,8 +23,10 @@ from report_cards.views import (
     home,
     profile,
     question_create,
+    resend_student_otp,
     review_student_profile_change,
     student_dashboard,
+    student_otp_verify,
     student_profile_edit,
 )
 
@@ -32,6 +34,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', home, name='home'),
     path('accounts/login/', RoleBasedLoginView.as_view(), name='login'),
+    path('accounts/otp/', student_otp_verify, name='student_otp_verify'),
+    path('accounts/otp/resend/', resend_student_otp, name='resend_student_otp'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
     path('dashboard/admin/questions/new/', question_create, name='question_create'),
