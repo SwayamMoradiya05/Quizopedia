@@ -22,6 +22,15 @@
         .actions { display: flex; gap: 14px; margin-top: 24px; }
         .pending, .message { margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #fff7e6; color: #746748; font-size: 13px; line-height: 1.6; }
         .message { margin-top: 0; margin-bottom: 16px; background: #eaf3ed; color: #356348; }
+        .requests { margin-top: 28px; }
+        h2 { margin: 0 0 12px; font-size: 17px; }
+        .request { padding: 15px 0; border-top: 1px solid #edf0ed; font-size: 13px; line-height: 1.6; }
+        .request:first-of-type { border-top: 0; }
+        .request-meta { color: #76827a; }
+        .status { display: inline-flex; margin-right: 8px; padding: 3px 8px; border-radius: 20px; background: #f0f3f0; color: #42514a; font-size: 11px; font-weight: 700; }
+        .status-pending { background: #fff7e6; color: #746748; }
+        .status-approved { background: #eaf3ed; color: #356348; }
+        .status-rejected { background: #fff0ed; color: #8b4032; }
         @media (max-width: 520px) { dl { grid-template-columns: 1fr; gap: 7px; } dd { margin-bottom: 12px; } }
     </style>
 </head>
@@ -48,9 +57,18 @@
             {% if not is_admin_profile %}
                 {% if student %}
                     <div class="actions"><a href="{% url 'student_profile_edit' %}">Request a profile update</a></div>
-                    {% if pending_change %}
-                        <div class="pending" role="status">A profile update submitted on {{ pending_change.created_at|date:"N j, Y" }} is awaiting admin approval.</div>
-                    {% endif %}
+                    <section class="requests" aria-labelledby="request-history-title">
+                        <h2 id="request-history-title">Profile update requests</h2>
+                        {% for change in profile_changes %}
+                            <article class="request">
+                                <span class="status status-{{ change.status }}">{{ change.get_status_display }}</span>
+                                Requested on {{ change.created_at|date:"N j, Y, P" }}.
+                                {% if change.reviewed_at %}<span class="request-meta">Reviewed on {{ change.reviewed_at|date:"N j, Y, P" }}.</span>{% endif %}
+                            </article>
+                        {% empty %}
+                            <div class="request-meta">You have not submitted any profile update requests.</div>
+                        {% endfor %}
+                    </section>
                 {% else %}
                     <div class="pending">Your school has not linked a student profile to this account yet. Contact your administrator to get started.</div>
                 {% endif %}

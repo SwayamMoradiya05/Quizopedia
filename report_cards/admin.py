@@ -17,7 +17,15 @@ class StudentAdmin(admin.ModelAdmin):
 
 @admin.register(StudentProfileChange)
 class StudentProfileChangeAdmin(admin.ModelAdmin):
-    list_display = ("student", "name", "email", "phone", "status", "created_at")
+    list_display = (
+        "student",
+        "name",
+        "email",
+        "phone",
+        "status",
+        "created_at",
+        "reviewed_at",
+    )
     list_filter = ("status", "created_at")
     search_fields = ("student__name", "name", "email")
     readonly_fields = (

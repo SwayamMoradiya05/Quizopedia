@@ -222,9 +222,9 @@ def admin_dashboard(request):
         ).count(),
         "question_count": Question.objects.count(),
         "students": Student.objects.select_related("user").order_by("name")[:6],
-        "pending_profile_changes": StudentProfileChange.objects.filter(
-            status=StudentProfileChange.Status.PENDING
-        ).select_related("student"),
+        "profile_changes": StudentProfileChange.objects.select_related(
+            "student"
+        ).order_by("-created_at", "-pk"),
     }
     return render(request, "report_cards/admin_dashboard.html", context)
 
@@ -317,20 +317,17 @@ def profile(request):
         )
 
     student = Student.objects.filter(user=request.user).first()
-    pending_change = (
-        student.profile_changes.filter(
-            status=StudentProfileChange.Status.PENDING
-        ).first()
-        if student
-        else None
-    )
     return render(
         request,
         "report_cards/profile.html",
         {
             "is_admin_profile": False,
             "student": student,
-            "pending_change": pending_change,
+            "profile_changes": (
+                student.profile_changes.order_by("-created_at", "-pk")
+                if student
+                else StudentProfileChange.objects.none()
+            ),
             "profile_name": (
                 student.name
                 if student

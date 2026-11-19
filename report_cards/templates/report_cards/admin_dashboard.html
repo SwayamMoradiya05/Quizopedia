@@ -39,6 +39,11 @@
         .review-actions button { padding: 7px 10px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
         .approve { background: #eaf3ed; color: #356348; }
         .reject { background: #fff0ed; color: #8b4032; }
+        .status { display: inline-flex; padding: 5px 9px; border-radius: 20px; background: #f0f3f0; color: #42514a; font-size: 11px; font-weight: 650; }
+        .status-pending { background: #fff7e6; color: #746748; }
+        .status-approved { background: #eaf3ed; color: #356348; }
+        .status-rejected { background: #fff0ed; color: #8b4032; }
+        .request-list { min-width: 900px; }
         .message { margin: 0 0 16px; padding: 12px 16px; border-radius: 8px; background: #eaf3ed; color: #356348; font-size: 13px; }
         @media (max-width: 620px) {
             header { padding: 15px 20px; }
@@ -83,33 +88,38 @@
         </section>
         <p><a href="{% url 'question_create' %}">Create and manage questions</a></p>
         <section class="panel">
-            <div class="panel-head"><h2>Student profile updates</h2><span>Admin approval required</span></div>
-            {% if pending_profile_changes %}
-                <table class="student-list">
-                    <thead><tr><th>Student</th><th>Requested name</th><th>Email</th><th>Phone</th><th>Review</th></tr></thead>
+            <div class="panel-head"><h2>Student profile updates</h2><span>Request history and review status</span></div>
+            {% if profile_changes %}
+                <table class="student-list request-list">
+                    <thead><tr><th>Student</th><th>Requested name</th><th>Email</th><th>Phone</th><th>Status</th><th>Submitted</th><th>Reviewed</th><th>Action</th></tr></thead>
                     <tbody>
-                        {% for change in pending_profile_changes %}
+                        {% for change in profile_changes %}
                             <tr>
                                 <td>{{ change.student.name }}</td>
                                 <td>{{ change.name }}</td>
                                 <td>{{ change.email }}</td>
                                 <td>{{ change.phone }}</td>
+                                <td><span class="status status-{{ change.status }}">{{ change.get_status_display }}</span></td>
+                                <td>{{ change.created_at|date:"N j, Y, P" }}</td>
+                                <td>{{ change.reviewed_at|date:"N j, Y, P"|default:"—" }}</td>
                                 <td>
-                                    <div class="review-actions">
-                                        <form method="post" action="{% url 'review_student_profile_change' change.id 'approved' %}">
-                                            {% csrf_token %}<button class="approve" type="submit">Approve</button>
-                                        </form>
-                                        <form method="post" action="{% url 'review_student_profile_change' change.id 'rejected' %}">
-                                            {% csrf_token %}<button class="reject" type="submit">Reject</button>
-                                        </form>
-                                    </div>
+                                    {% if change.status == "pending" %}
+                                        <div class="review-actions">
+                                            <form method="post" action="{% url 'review_student_profile_change' change.id 'approved' %}">
+                                                {% csrf_token %}<button class="approve" type="submit">Approve</button>
+                                            </form>
+                                            <form method="post" action="{% url 'review_student_profile_change' change.id 'rejected' %}">
+                                                {% csrf_token %}<button class="reject" type="submit">Reject</button>
+                                            </form>
+                                        </div>
+                                    {% else %}—{% endif %}
                                 </td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             {% else %}
-                <div class="empty">There are no profile changes awaiting approval.</div>
+                <div class="empty">There are no profile update requests yet.</div>
             {% endif %}
         </section>
         <section class="panel">

@@ -420,6 +420,27 @@ class ProfileAndCatalogTests(TestCase):
         self.assertContains(response, student.name)
         self.assertContains(response, reverse("student_profile_edit"))
 
+    def test_student_profile_shows_request_status_and_timestamps(self):
+        user, student = self.create_student()
+        reviewed_at = timezone.now()
+        change = StudentProfileChange.objects.create(
+            student=student,
+            name="Former Request",
+            email="former@example.com",
+            phone="555-0111",
+            status=StudentProfileChange.Status.REJECTED,
+            reviewed_at=reviewed_at,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, change.get_status_display())
+        self.assertContains(response, change.created_at.strftime("%b"))
+        self.assertContains(response, reviewed_at.strftime("%b"))
+        self.assertContains(response, "Profile update requests")
+
     def test_profile_edit_form_starts_with_current_student_details(self):
         user, student = self.create_student()
         self.client.force_login(user)
@@ -487,6 +508,9 @@ class ProfileAndCatalogTests(TestCase):
         dashboard = self.client.get(reverse("admin_dashboard"))
         self.assertContains(dashboard, "Updated Student")
         self.assertContains(dashboard, "Approve")
+        self.assertContains(dashboard, "Submitted")
+        self.assertContains(dashboard, "Reviewed")
+        self.assertContains(dashboard, change.created_at.strftime("%b"))
 
         response = self.client.post(
             reverse(
@@ -502,6 +526,37 @@ class ProfileAndCatalogTests(TestCase):
         self.assertEqual(student.email, "updated@example.com")
         self.assertEqual(change.status, StudentProfileChange.Status.APPROVED)
         self.assertIsNotNone(change.reviewed_at)
+
+    def test_admin_dashboard_shows_resolved_request_status_and_review_time(self):
+        _, student = self.create_student()
+        reviewed_at = timezone.now()
+        change = StudentProfileChange.objects.create(
+            student=student,
+            name="Rejected Student",
+            email="rejected@example.com",
+            phone="555-0199",
+            status=StudentProfileChange.Status.REJECTED,
+            reviewed_at=reviewed_at,
+        )
+        admin_user = get_user_model().objects.create_user(
+            username="historyreviewer",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, change.get_status_display())
+        self.assertContains(response, reviewed_at.strftime("%b"))
+        self.assertNotContains(
+            response,
+            reverse(
+                "review_student_profile_change",
+                args=(change.id, StudentProfileChange.Status.APPROVED),
+            ),
+        )
 
     def test_admin_rejection_does_not_change_student_profile(self):
         _, student = self.create_student()
