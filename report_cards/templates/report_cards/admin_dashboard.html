@@ -86,7 +86,10 @@
             <article class="stat"><div class="stat-label">Administrator accounts</div><div class="stat-value">{{ admin_count }}</div></article>
             <article class="stat"><div class="stat-label">Total questions</div><div class="stat-value">{{ question_count }}</div></article>
         </section>
-        <p><a href="{% url 'question_create' %}">Create and manage questions</a></p>
+        <p>
+            <a href="{% url 'question_create' %}">Create and manage questions</a>
+            · <a href="{% url 'subject_list' %}">Manage subjects</a>
+        </p>
         <section class="panel">
             <div class="panel-head"><h2>Student profile updates</h2><span>Request history and review status</span></div>
             {% if profile_changes %}

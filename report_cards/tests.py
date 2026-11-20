@@ -490,7 +490,8 @@ class ProfileAndCatalogTests(TestCase):
         change = StudentProfileChange.objects.get(student=student)
         self.assertEqual(change.status, StudentProfileChange.Status.PENDING)
 
-    def test_admin_approval_applies_profile_update(self):
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_admin_approval_applies_profile_update_and_emails_student(self):
         _, student = self.create_student()
         change = StudentProfileChange.objects.create(
             student=student,
@@ -519,13 +520,24 @@ class ProfileAndCatalogTests(TestCase):
             )
         )
 
-        self.assertRedirects(response, reverse("admin_dashboard"))
+        self.assertRedirects(
+            response,
+            reverse("admin_dashboard"),
+            fetch_redirect_response=False,
+        )
         student.refresh_from_db()
         change.refresh_from_db()
         self.assertEqual(student.name, "Updated Student")
         self.assertEqual(student.email, "updated@example.com")
         self.assertEqual(change.status, StudentProfileChange.Status.APPROVED)
         self.assertIsNotNone(change.reviewed_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["updated@example.com"])
+        self.assertIn("approved", mail.outbox[0].subject)
+        self.assertContains(
+            self.client.get(reverse("admin_dashboard")),
+            "notification emailed",
+        )
 
     def test_admin_dashboard_shows_resolved_request_status_and_review_time(self):
         _, student = self.create_student()
@@ -558,7 +570,8 @@ class ProfileAndCatalogTests(TestCase):
             ),
         )
 
-    def test_admin_rejection_does_not_change_student_profile(self):
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_admin_rejection_does_not_change_student_profile_and_emails_student(self):
         _, student = self.create_student()
         change = StudentProfileChange.objects.create(
             student=student,
@@ -573,7 +586,7 @@ class ProfileAndCatalogTests(TestCase):
         )
         self.client.force_login(admin_user)
 
-        self.client.post(
+        response = self.client.post(
             reverse(
                 "review_student_profile_change",
                 args=(change.id, StudentProfileChange.Status.REJECTED),
@@ -584,6 +597,60 @@ class ProfileAndCatalogTests(TestCase):
         change.refresh_from_db()
         self.assertEqual(student.name, "Current Student")
         self.assertEqual(change.status, StudentProfileChange.Status.REJECTED)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [student.email])
+        self.assertIn("rejected", mail.outbox[0].subject)
+        self.assertRedirects(response, reverse("admin_dashboard"))
+
+    def test_admin_can_create_update_and_delete_subjects(self):
+        admin_user = get_user_model().objects.create_user(
+            username="subjectadmin",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("subject_create"),
+            {"name": "History", "description": "Past events and societies."},
+        )
+        self.assertRedirects(response, reverse("subject_list"))
+        subject = Subject.objects.get(name="History")
+
+        response = self.client.post(
+            reverse("subject_update", args=(subject.pk,)),
+            {"name": "World History", "description": "Global history."},
+        )
+        self.assertRedirects(response, reverse("subject_list"))
+        subject.refresh_from_db()
+        self.assertEqual(subject.name, "World History")
+        self.assertEqual(subject.description, "Global history.")
+
+        self.assertEqual(
+            self.client.get(reverse("subject_delete", args=(subject.pk,))).status_code,
+            200,
+        )
+        response = self.client.post(reverse("subject_delete", args=(subject.pk,)))
+        self.assertRedirects(response, reverse("subject_list"))
+        self.assertFalse(Subject.objects.filter(pk=subject.pk).exists())
+
+    def test_students_cannot_manage_subjects_and_delete_requires_post(self):
+        user, _ = self.create_student()
+        subject = Subject.objects.create(name="Protected Subject")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("subject_list"))
+        self.assertEqual(response.status_code, 403)
+
+        admin_user = get_user_model().objects.create_user(
+            username="subjectdeleteadmin",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+        response = self.client.get(reverse("subject_delete", args=(subject.pk,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Subject.objects.filter(pk=subject.pk).exists())
 
     def test_student_cannot_review_profile_change(self):
         user, student = self.create_student()

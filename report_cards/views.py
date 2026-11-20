@@ -15,7 +15,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import OTPVerificationForm, QuestionCreateForm, StudentProfileChangeForm
+from .forms import (
+    OTPVerificationForm,
+    QuestionCreateForm,
+    StudentProfileChangeForm,
+    SubjectForm,
+)
 from .models import (
     Admin,
     Option,
@@ -279,6 +284,66 @@ def question_create(request):
 
 
 @login_required
+def subject_list(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+    return render(
+        request,
+        "report_cards/subject_list.html",
+        {"subjects": Subject.objects.order_by("name")},
+    )
+
+
+@login_required
+def subject_create(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+    form = SubjectForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Subject created successfully.")
+        return redirect("subject_list")
+    return render(
+        request,
+        "report_cards/subject_form.html",
+        {"form": form, "is_update": False},
+    )
+
+
+@login_required
+def subject_update(request, subject_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+    subject = get_object_or_404(Subject, pk=subject_id)
+    form = SubjectForm(request.POST or None, instance=subject)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Subject updated successfully.")
+        return redirect("subject_list")
+    return render(
+        request,
+        "report_cards/subject_form.html",
+        {"form": form, "is_update": True, "subject": subject},
+    )
+
+
+@login_required
+def subject_delete(request, subject_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+    subject = get_object_or_404(Subject, pk=subject_id)
+    if request.method == "POST":
+        subject.delete()
+        messages.success(request, "Subject deleted successfully.")
+        return redirect("subject_list")
+    return render(
+        request,
+        "report_cards/subject_confirm_delete.html",
+        {"subject": subject},
+    )
+
+
+@login_required
 def student_dashboard(request):
     student = Student.objects.filter(user=request.user).first()
     return render(
@@ -404,8 +469,30 @@ def review_student_profile_change(request, change_id, decision):
         change.status = decision
         change.reviewed_at = timezone.now()
         change.save(update_fields=("status", "reviewed_at"))
-    messages.success(
-        request,
-        f"Student profile change {change.get_status_display().lower()}.",
-    )
+    try:
+        sent_count = send_mail(
+            f"Your Quizopedia profile update was {change.get_status_display().lower()}",
+            (
+                f"Hello {change.student.name},\n\n"
+                f"Your profile update request submitted on "
+                f"{change.created_at:%B %d, %Y} was "
+                f"{change.get_status_display().lower()}."
+            ),
+            None,
+            [change.student.email],
+            fail_silently=False,
+        )
+    except (OSError, smtplib.SMTPException):
+        sent_count = 0
+
+    if sent_count == 1:
+        messages.success(
+            request,
+            f"Student profile change {change.get_status_display().lower()} and notification emailed.",
+        )
+    else:
+        messages.error(
+            request,
+            f"Student profile change {change.get_status_display().lower()}, but the notification email could not be sent.",
+        )
     return redirect("admin_dashboard")

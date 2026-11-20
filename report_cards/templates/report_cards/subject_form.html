@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if is_update %}Edit{% else %}Add{% endif %} subject | Quizopedia</title>
+    <style>
+        body { margin: 0; background: #f5f6f4; color: #26332f; font-family: Inter, "Segoe UI", Arial, sans-serif; }
+        main { width: min(600px, calc(100% - 40px)); margin: 40px auto; }
+        section { padding: 24px; border: 1px solid #e4e8e4; border-radius: 12px; background: #fff; }
+        h1 { margin-top: 0; }
+        form p { display: grid; gap: 6px; }
+        input, textarea { max-width: 100%; padding: 9px; border: 1px solid #ccd4ce; border-radius: 6px; font: inherit; }
+        button { padding: 10px 15px; border: 0; border-radius: 7px; background: #29443d; color: #fff; cursor: pointer; font: inherit; font-weight: 650; }
+        a { color: #356348; }
+        .errorlist { color: #a33b2d; }
+    </style>
+</head>
+<body>
+    <main>
+        <p><a href="{% url 'subject_list' %}">Back to subjects</a></p>
+        <section>
+            <h1>{% if is_update %}Edit{% else %}Add{% endif %} subject</h1>
+            <form method="post">
+                {% csrf_token %}
+                {{ form.as_p }}
+                <button type="submit">{% if is_update %}Save changes{% else %}Create subject{% endif %}</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,7 +1,7 @@
 from django import forms
 from django.core.validators import RegexValidator
 
-from .models import Question, StudentProfileChange
+from .models import Question, StudentProfileChange, Subject
 
 
 class OTPVerificationForm(forms.Form):
@@ -29,6 +29,12 @@ class StudentProfileChangeForm(forms.ModelForm):
     class Meta:
         model = StudentProfileChange
         fields = ("name", "email", "phone")
+
+
+class SubjectForm(forms.ModelForm):
+    class Meta:
+        model = Subject
+        fields = ("name", "description")
 
 
 class QuestionCreateForm(forms.ModelForm):
