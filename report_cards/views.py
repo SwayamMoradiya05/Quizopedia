@@ -8,8 +8,10 @@ from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.core.mail import send_mail
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -287,10 +289,33 @@ def question_create(request):
 def subject_list(request):
     if not _is_admin(request.user):
         raise PermissionDenied
+
+    search_query = (
+        request.GET.get("q")
+        or request.GET.get("search")
+        or ""
+    ).strip()
+    subjects = Subject.objects.order_by("name")
+    if search_query:
+        subjects = subjects.filter(
+            Q(name__icontains=search_query)
+            | Q(description__icontains=search_query)
+        )
+
+    paginator = Paginator(subjects, 10)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
     return render(
         request,
         "report_cards/subject_list.html",
-        {"subjects": Subject.objects.order_by("name")},
+        {
+            "subjects": page_obj.object_list,
+            "page_obj": page_obj,
+            "paginator": paginator,
+            "is_paginated": page_obj.has_other_pages(),
+            "search_query": search_query,
+            "q": search_query,
+        },
     )
 
 
@@ -303,6 +328,8 @@ def subject_create(request):
         form.save()
         messages.success(request, "Subject created successfully.")
         return redirect("subject_list")
+    if request.method == "POST":
+        messages.error(request, "Please correct the errors below.")
     return render(
         request,
         "report_cards/subject_form.html",
@@ -320,6 +347,8 @@ def subject_update(request, subject_id):
         form.save()
         messages.success(request, "Subject updated successfully.")
         return redirect("subject_list")
+    if request.method == "POST":
+        messages.error(request, "Please correct the errors below.")
     return render(
         request,
         "report_cards/subject_form.html",

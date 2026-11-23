@@ -35,6 +35,36 @@ class SubjectForm(forms.ModelForm):
     class Meta:
         model = Subject
         fields = ("name", "description")
+        widgets = {
+            "name": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Enter subject name",
+                    "required": True,
+                }
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Enter an optional description",
+                    "rows": 4,
+                }
+            ),
+        }
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if not name:
+            raise forms.ValidationError("Subject name is required.")
+
+        duplicate = Subject.objects.filter(name__iexact=name)
+        if self.instance.pk:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise forms.ValidationError(
+                "A subject with this name already exists."
+            )
+        return name
 
 
 class QuestionCreateForm(forms.ModelForm):

@@ -652,6 +652,55 @@ class ProfileAndCatalogTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Subject.objects.filter(pk=subject.pk).exists())
 
+    def test_subject_list_searches_and_paginates(self):
+        admin_user = get_user_model().objects.create_user(
+            username="subjectpagination",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+        for number in range(12):
+            Subject.objects.create(
+                name=f"Subject {number:02d}",
+                description="Pagination category",
+            )
+
+        response = self.client.get(reverse("subject_list"), {"page": 2})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["is_paginated"])
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertLessEqual(len(response.context["subjects"]), 10)
+
+        response = self.client.get(
+            reverse("subject_list"),
+            {"q": "Pagination"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Subject 00")
+        self.assertContains(response, "Subject 09")
+        self.assertEqual(response.context["search_query"], "Pagination")
+
+    def test_subject_form_rejects_duplicate_names_and_shows_errors(self):
+        admin_user = get_user_model().objects.create_user(
+            username="subjectvalidation",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        Subject.objects.create(name="Validation Duplicate", description="Numbers")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("subject_create"),
+            {"name": " validation duplicate ", "description": "Duplicate"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "A subject with this name already exists.")
+        self.assertContains(response, "Please correct the errors below.")
+        self.assertEqual(
+            Subject.objects.filter(name__iexact="validation duplicate").count(),
+            1,
+        )
+
     def test_student_cannot_review_profile_change(self):
         user, student = self.create_student()
         change = StudentProfileChange.objects.create(
