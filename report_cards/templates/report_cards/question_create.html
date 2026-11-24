@@ -11,13 +11,16 @@
         h1, h2 { margin-top: 0; }
         form p { display: grid; gap: 6px; }
         input, select, textarea { max-width: 100%; padding: 9px; border: 1px solid #ccd4ce; border-radius: 6px; font: inherit; }
-        input[type="radio"] { width: auto; }
+        input[type="checkbox"] { width: auto; }
         button { padding: 10px 15px; border: 0; border-radius: 7px; background: #29443d; color: #fff; cursor: pointer; font: inherit; font-weight: 650; }
         .errorlist { color: #a33b2d; }
         .messages { padding: 0; list-style: none; color: #356348; }
         .question { padding: 14px 0; border-bottom: 1px solid #edf0ed; }
         .question:last-child { border-bottom: 0; }
         .options { margin: 8px 0 0; color: #66746d; }
+        .option-row { padding: 12px 0; border-bottom: 1px solid #edf0ed; }
+        .question-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+        .question-actions form { display: inline; }
         a { color: #356348; }
     </style>
 </head>
@@ -41,11 +44,24 @@
         </section>
         {% if selected_subject %}
             <section>
-                <h2>Create a question for {{ selected_subject.name }}</h2>
+                <h2>{% if editing_question %}Update question{% else %}Create a question{% endif %} for {{ selected_subject.name }}</h2>
                 <form method="post">
                     {% csrf_token %}
                     {{ form.as_p }}
-                    <button type="submit">Create question</button>
+                    {{ option_formset.management_form }}
+                    {{ option_formset.non_form_errors }}
+                    <h3>Options</h3>
+                    {% for option_form in option_formset %}
+                        <div class="option-row">
+                            {% for hidden in option_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            {{ option_form.non_field_errors }}
+                            <p>{{ option_form.option_text.label_tag }} {{ option_form.option_text }} {{ option_form.option_text.errors }}</p>
+                            <p>{{ option_form.is_answer }} {{ option_form.is_answer.label_tag }} {{ option_form.is_answer.errors }}</p>
+                            {% if option_form.DELETE %}<p>{{ option_form.DELETE }} {{ option_form.DELETE.label_tag }}</p>{% endif %}
+                        </div>
+                    {% endfor %}
+                    <button type="submit">{% if editing_question %}Save question{% else %}Create question{% endif %}</button>
+                    {% if editing_question %}<a href="{% url 'question_create' %}?subject={{ selected_subject.pk }}">Cancel</a>{% endif %}
                 </form>
             </section>
             <section>
@@ -58,6 +74,13 @@
                                 <li>{{ option.option_text }}{% if option.is_answer %} (answer){% endif %}</li>
                             {% endfor %}
                         </ul>
+                        <div class="question-actions">
+                            <a href="{% url 'question_update' question.pk %}">Edit question and options</a>
+                            <form method="post" action="{% url 'question_delete' question.pk %}">
+                                {% csrf_token %}
+                                <button type="submit">Delete question</button>
+                            </form>
+                        </div>
                     </article>
                 {% empty %}
                     <p>No questions have been added to this subject yet.</p>

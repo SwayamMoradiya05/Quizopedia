@@ -20,6 +20,9 @@ from django.views.decorators.http import require_POST
 from .forms import (
     OTPVerificationForm,
     QuestionCreateForm,
+    QuestionForm,
+    QuestionOptionFormSet,
+    QuestionUpdateOptionFormSet,
     StudentProfileChangeForm,
     SubjectForm,
 )
@@ -248,25 +251,48 @@ def question_create(request):
             else request.GET.get("subject")
         )
     ).first()
-    form = QuestionCreateForm(
+    form = QuestionForm(
         request.POST or None,
         initial={"subject": selected_subject},
     )
+    question = Question(subject=selected_subject)
+    option_formset = QuestionOptionFormSet(
+        request.POST or None,
+        instance=question,
+    )
 
-    if request.method == "POST" and form.is_valid():
-        question = form.save(commit=False)
-        with transaction.atomic():
-            question.save()
-            for label in ("A", "B", "C", "D"):
-                Option.objects.create(
-                    question=question,
-                    option_text=form.cleaned_data[f"option_{label.lower()}"],
-                    is_answer=form.cleaned_data["correct_option"] == label,
-                )
-        messages.success(request, "Question created successfully.")
-        return redirect(
-            f"{reverse('question_create')}?subject={question.subject_id}"
-        )
+    if request.method == "POST" and "option_a" in request.POST:
+        legacy_form = QuestionCreateForm(request.POST)
+        if legacy_form.is_valid():
+            question = legacy_form.save(commit=False)
+            with transaction.atomic():
+                question.save()
+                for label in ("A", "B", "C", "D"):
+                    Option.objects.create(
+                        question=question,
+                        option_text=legacy_form.cleaned_data[
+                            f"option_{label.lower()}"
+                        ],
+                        is_answer=legacy_form.cleaned_data["correct_option"] == label,
+                    )
+            messages.success(request, "Question created successfully.")
+            return redirect(
+                f"{reverse('question_create')}?subject={question.subject_id}"
+            )
+        form.add_error(None, "Please correct the submitted question and options.")
+    elif request.method == "POST":
+        form_is_valid = form.is_valid()
+        options_are_valid = option_formset.is_valid()
+        if form_is_valid and options_are_valid:
+            question = form.save(commit=False)
+            with transaction.atomic():
+                question.save()
+                option_formset.instance = question
+                option_formset.save()
+            messages.success(request, "Question created successfully.")
+            return redirect(
+                f"{reverse('question_create')}?subject={question.subject_id}"
+            )
 
     questions = (
         selected_subject.questions.prefetch_related("options").order_by("pk")
@@ -278,11 +304,72 @@ def question_create(request):
         "report_cards/question_create.html",
         {
             "form": form,
+            "option_formset": option_formset,
+            "editing_question": None,
             "selected_subject": selected_subject,
             "questions": questions,
             "subjects": Subject.objects.order_by("name"),
         },
     )
+
+
+@login_required
+def question_update(request, question_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    question = get_object_or_404(
+        Question.objects.select_related("subject"),
+        pk=question_id,
+    )
+    form = QuestionForm(request.POST or None, instance=question)
+    option_formset = QuestionUpdateOptionFormSet(
+        request.POST or None,
+        instance=question,
+    )
+
+    if request.method == "POST":
+        form_is_valid = form.is_valid()
+        options_are_valid = option_formset.is_valid()
+        if form_is_valid and options_are_valid:
+            with transaction.atomic():
+                question = form.save()
+                option_formset.instance = question
+                option_formset.save()
+            messages.success(request, "Question updated successfully.")
+            return redirect(
+                f"{reverse('question_create')}?subject={question.subject_id}"
+            )
+
+    selected_subject = question.subject
+    questions = (
+        selected_subject.questions.prefetch_related("options").order_by("pk")
+    )
+    return render(
+        request,
+        "report_cards/question_create.html",
+        {
+            "form": form,
+            "option_formset": option_formset,
+            "editing_question": question,
+            "selected_subject": selected_subject,
+            "questions": questions,
+            "subjects": Subject.objects.order_by("name"),
+        },
+    )
+
+
+@login_required
+@require_POST
+def question_delete(request, question_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    question = get_object_or_404(Question, pk=question_id)
+    subject_id = question.subject_id
+    question.delete()
+    messages.success(request, "Question deleted successfully.")
+    return redirect(f"{reverse('question_create')}?subject={subject_id}")
 
 
 @login_required

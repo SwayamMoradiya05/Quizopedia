@@ -359,6 +359,110 @@ class AuthenticationTests(TestCase):
         self.assertContains(response, question.question_text)
         self.assertNotContains(response, "Question for another subject")
 
+    def test_admin_can_create_question_and_options_with_checkbox_answer(self):
+        admin_user = self.create_user("questionformsetadmin", is_staff=True)
+        subject = Subject.objects.create(name="Question Formset Subject")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("question_create"),
+            {
+                "subject": subject.pk,
+                "question_text": "Which one is correct?",
+                "explanation": "A test explanation.",
+                "options-TOTAL_FORMS": "4",
+                "options-INITIAL_FORMS": "0",
+                "options-MIN_NUM_FORMS": "0",
+                "options-MAX_NUM_FORMS": "1000",
+                "options-0-option_text": "Correct",
+                "options-0-is_answer": "on",
+                "options-1-option_text": "Incorrect",
+                "options-2-option_text": "",
+                "options-3-option_text": "",
+            },
+        )
+
+        question = Question.objects.get(question_text="Which one is correct?")
+        self.assertRedirects(
+            response,
+            f"{reverse('question_create')}?subject={subject.pk}",
+        )
+        self.assertEqual(question.options.count(), 2)
+        self.assertEqual(
+            question.options.get(is_answer=True).option_text,
+            "Correct",
+        )
+
+    def test_admin_can_update_question_add_and_delete_options_then_delete_question(self):
+        admin_user = self.create_user("questionupdateadmin", is_staff=True)
+        subject = Subject.objects.create(name="Question Update Subject")
+        question = Question.objects.create(
+            subject=subject,
+            question_text="Original question",
+            explanation="Original explanation",
+        )
+        correct_option = Option.objects.create(
+            question=question,
+            option_text="Original answer",
+            is_answer=True,
+        )
+        removable_option = Option.objects.create(
+            question=question,
+            option_text="Remove me",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("question_update", args=(question.pk,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'type="checkbox"')
+
+        response = self.client.post(
+            reverse("question_update", args=(question.pk,)),
+            {
+                "subject": subject.pk,
+                "question_text": "Updated question",
+                "explanation": "Updated explanation",
+                "options-TOTAL_FORMS": "3",
+                "options-INITIAL_FORMS": "2",
+                "options-MIN_NUM_FORMS": "0",
+                "options-MAX_NUM_FORMS": "1000",
+                "options-0-id": correct_option.pk,
+                "options-0-question": question.pk,
+                "options-0-option_text": "Updated answer",
+                "options-0-is_answer": "on",
+                "options-1-id": removable_option.pk,
+                "options-1-question": question.pk,
+                "options-1-option_text": "Remove me",
+                "options-1-DELETE": "on",
+                "options-2-option_text": "New distractor",
+            },
+        )
+
+        question.refresh_from_db()
+        self.assertRedirects(
+            response,
+            f"{reverse('question_create')}?subject={subject.pk}",
+        )
+        self.assertEqual(question.question_text, "Updated question")
+        self.assertEqual(question.options.count(), 2)
+        self.assertEqual(
+            question.options.get(is_answer=True).option_text,
+            "Updated answer",
+        )
+        self.assertTrue(
+            question.options.filter(option_text="New distractor").exists()
+        )
+
+        response = self.client.post(
+            reverse("question_delete", args=(question.pk,)),
+        )
+        self.assertRedirects(
+            response,
+            f"{reverse('question_create')}?subject={subject.pk}",
+        )
+        self.assertFalse(Question.objects.filter(pk=question.pk).exists())
+        self.assertFalse(Option.objects.filter(question_id=question.pk).exists())
+
     def test_students_cannot_create_questions(self):
         student_user = self.create_user("questionstudent")
         self.client.force_login(student_user)

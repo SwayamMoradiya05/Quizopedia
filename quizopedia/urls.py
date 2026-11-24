@@ -23,6 +23,8 @@ from report_cards.views import (
     home,
     profile,
     question_create,
+    question_delete,
+    question_update,
     resend_student_otp,
     review_student_profile_change,
     subject_create,
@@ -43,6 +45,16 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
     path('dashboard/admin/questions/new/', question_create, name='question_create'),
+    path(
+        'dashboard/admin/questions/<int:question_id>/edit/',
+        question_update,
+        name='question_update',
+    ),
+    path(
+        'dashboard/admin/questions/<int:question_id>/delete/',
+        question_delete,
+        name='question_delete',
+    ),
     path('dashboard/admin/subjects/', subject_list, name='subject_list'),
     path('dashboard/admin/subjects/new/', subject_create, name='subject_create'),
     path(
