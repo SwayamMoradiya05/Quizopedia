@@ -359,6 +359,39 @@ class AuthenticationTests(TestCase):
         self.assertContains(response, question.question_text)
         self.assertNotContains(response, "Question for another subject")
 
+    def test_question_creation_rejects_options_without_a_correct_answer(self):
+        admin_user = self.create_user("questionnoansweradmin", is_staff=True)
+        subject = Subject.objects.create(name="Question No Answer Subject")
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("question_create"),
+            {
+                "subject": subject.pk,
+                "question_text": "This question needs a correct answer",
+                "explanation": "",
+                "options-TOTAL_FORMS": "4",
+                "options-INITIAL_FORMS": "0",
+                "options-MIN_NUM_FORMS": "0",
+                "options-MAX_NUM_FORMS": "1000",
+                "options-0-option_text": "First option",
+                "options-1-option_text": "Second option",
+                "options-2-option_text": "",
+                "options-3-option_text": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Question.objects.filter(
+                question_text="This question needs a correct answer"
+            ).exists()
+        )
+        self.assertIn(
+            "Select exactly one correct option.",
+            response.context["option_formset"].non_form_errors(),
+        )
+
     def test_admin_can_create_question_and_options_with_checkbox_answer(self):
         admin_user = self.create_user("questionformsetadmin", is_staff=True)
         subject = Subject.objects.create(name="Question Formset Subject")
@@ -392,6 +425,39 @@ class AuthenticationTests(TestCase):
             question.options.get(is_answer=True).option_text,
             "Correct",
         )
+
+    def test_question_list_is_paginated_and_searches_options(self):
+        admin_user = self.create_user("questionlistadmin", is_staff=True)
+        subject = Subject.objects.create(name="Question Listing Subject")
+        questions = [
+            Question.objects.create(
+                subject=subject,
+                question_text=f"Question listing item {number}",
+            )
+            for number in range(12)
+        ]
+        Option.objects.create(
+            question=questions[0],
+            option_text="needle option",
+        )
+        Option.objects.create(
+            question=questions[0],
+            option_text="another needle",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("question_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["questions"]), 10)
+        self.assertTrue(response.context["is_paginated"])
+        self.assertContains(response, "page=2")
+
+        response = self.client.get(reverse("question_list"), {"q": "needle"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["questions"]), 1)
+        self.assertEqual(response.context["questions"][0], questions[0])
 
     def test_admin_can_update_question_add_and_delete_options_then_delete_question(self):
         admin_user = self.create_user("questionupdateadmin", is_staff=True)

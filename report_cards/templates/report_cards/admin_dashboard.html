@@ -87,7 +87,8 @@
             <article class="stat"><div class="stat-label">Total questions</div><div class="stat-value">{{ question_count }}</div></article>
         </section>
         <p>
-            <a href="{% url 'question_create' %}">Create and manage questions</a>
+            <a href="{% url 'question_list' %}">Browse questions</a>
+            · <a href="{% url 'question_create' %}">Create a question</a>
             · <a href="{% url 'subject_list' %}">Manage subjects</a>
         </p>
         <section class="panel">

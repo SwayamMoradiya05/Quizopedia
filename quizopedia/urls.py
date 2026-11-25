@@ -24,6 +24,7 @@ from report_cards.views import (
     profile,
     question_create,
     question_delete,
+    question_list,
     question_update,
     resend_student_otp,
     review_student_profile_change,
@@ -44,6 +45,7 @@ urlpatterns = [
     path('accounts/otp/resend/', resend_student_otp, name='resend_student_otp'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
+    path('dashboard/admin/questions/', question_list, name='question_list'),
     path('dashboard/admin/questions/new/', question_create, name='question_create'),
     path(
         'dashboard/admin/questions/<int:question_id>/edit/',

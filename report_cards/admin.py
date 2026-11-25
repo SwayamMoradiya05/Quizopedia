@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from .forms import BaseOptionFormSet
 from .models import Admin, Option, Question, Student, StudentProfileChange, Subject
 
 
@@ -46,11 +47,19 @@ class SubjectAdmin(admin.ModelAdmin):
     search_fields = ("name",)
 
 
+class QuestionOptionInline(admin.TabularInline):
+    model = Option
+    formset = BaseOptionFormSet
+    extra = 4
+    can_delete = True
+
+
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ("question_text", "subject")
     list_filter = ("subject",)
     search_fields = ("question_text",)
+    inlines = (QuestionOptionInline,)
 
 
 @admin.register(Option)

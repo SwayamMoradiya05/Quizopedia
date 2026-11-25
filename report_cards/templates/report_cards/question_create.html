@@ -26,7 +26,10 @@
 </head>
 <body>
     <main>
-        <p><a href="{% url 'admin_dashboard' %}">Back to dashboard</a></p>
+        <p>
+            <a href="{% url 'admin_dashboard' %}">Back to dashboard</a>
+            · <a href="{% url 'question_list' %}">Browse all questions</a>
+        </p>
         <h1>Questions</h1>
         {% for message in messages %}<p class="messages">{{ message }}</p>{% endfor %}
         <section>

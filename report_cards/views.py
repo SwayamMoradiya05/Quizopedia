@@ -240,6 +240,38 @@ def admin_dashboard(request):
 
 
 @login_required
+def question_list(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    search_query = (request.GET.get("q") or request.GET.get("search") or "").strip()
+    questions = Question.objects.select_related("subject").prefetch_related(
+        "options"
+    )
+    if search_query:
+        questions = questions.filter(
+            Q(question_text__icontains=search_query)
+            | Q(subject__name__icontains=search_query)
+            | Q(options__option_text__icontains=search_query)
+        ).distinct()
+    questions = questions.order_by("pk")
+
+    paginator = Paginator(questions, 10)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    return render(
+        request,
+        "report_cards/question_list.html",
+        {
+            "questions": page_obj.object_list,
+            "page_obj": page_obj,
+            "paginator": paginator,
+            "is_paginated": page_obj.has_other_pages(),
+            "search_query": search_query,
+        },
+    )
+
+
+@login_required
 def question_create(request):
     if not _is_admin(request.user):
         raise PermissionDenied
