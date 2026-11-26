@@ -85,6 +85,27 @@ class StudentProfileChange(models.Model):
         return f"{self.student.name} profile change ({self.get_status_display()})"
 
 
+class ContactMessage(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="contact_messages",
+    )
+    sender_name = models.CharField(max_length=150)
+    sender_email = models.EmailField()
+    subject = models.CharField(max_length=150)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    reply = models.TextField(blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"{self.subject} — {self.sender_name}"
+
+
 class Subject(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)

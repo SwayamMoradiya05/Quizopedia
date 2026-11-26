@@ -90,6 +90,8 @@
             <a href="{% url 'question_list' %}">Browse questions</a>
             · <a href="{% url 'question_create' %}">Create a question</a>
             · <a href="{% url 'subject_list' %}">Manage subjects</a>
+            · <a href="{% url 'admin_student_create' %}">Register a student</a>
+            · <a href="{% url 'contact_message_list' %}">Contact messages ({{ contact_message_count }})</a>
         </p>
         <section class="panel">
             <div class="panel-head"><h2>Student profile updates</h2><span>Request history and review status</span></div>
@@ -143,7 +145,7 @@
                     </tbody>
                 </table>
             {% else %}
-                <div class="empty">No student profiles yet. Add student records in the Django admin to get started.</div>
+                <div class="empty">No student profiles yet. <a href="{% url 'admin_student_create' %}">Register the first student</a>.</div>
             {% endif %}
         </section>
     </main>

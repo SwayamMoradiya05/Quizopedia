@@ -27,6 +27,13 @@
         .card-value { margin: 14px 0 7px; font-size: 18px; font-weight: 650; }
         .card-note { margin: 0; color: #7d8780; font-size: 13px; line-height: 1.6; }
         .note { margin-top: 18px; padding: 17px 20px; border-left: 3px solid #d7a752; border-radius: 0 8px 8px 0; background: #fff9eb; color: #746748; font-size: 13px; line-height: 1.6; }
+        .contact { margin-top: 18px; }
+        .contact label { display: block; margin: 15px 0 7px; color: #536159; font-size: 13px; font-weight: 650; }
+        .contact input, .contact textarea { width: 100%; padding: 11px 12px; border: 1px solid #dce2dc; border-radius: 7px; font: inherit; }
+        .contact textarea { resize: vertical; }
+        .submit { margin-top: 15px; padding: 11px 16px; border: 0; border-radius: 7px; background: #29443d; color: #fff; cursor: pointer; font: inherit; font-weight: 650; }
+        .form-error { margin: 6px 0 0; color: #9a4032; font-size: 12px; }
+        .message { margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: #eaf3ed; color: #356348; font-size: 13px; }
         @media (max-width: 620px) {
             header { padding: 15px 20px; }
             .account > span { display: none; }
@@ -49,6 +56,7 @@
         </div>
     </header>
     <main>
+        {% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}
         <section class="welcome">
             <div class="welcome-content">
                 <div class="eyebrow">Your learning space</div>
@@ -70,6 +78,22 @@
             </article>
         </section>
         <div class="note">Your learning activity and quiz results will appear here as they become available.</div>
+        <section class="card contact" aria-labelledby="contact-title">
+            <div class="card-label">Need help?</div>
+            <h2 class="section-title" id="contact-title">Contact the administrator</h2>
+            <p class="card-note">Send us a message and an administrator will reply to your email address.</p>
+            <form method="post" action="{% url 'student_contact_create' %}">
+                {% csrf_token %}
+                {% if contact_form.non_field_errors %}<div class="form-error">{{ contact_form.non_field_errors }}</div>{% endif %}
+                <label for="{{ contact_form.subject.id_for_label }}">Subject</label>
+                {{ contact_form.subject }}
+                {% for error in contact_form.subject.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+                <label for="{{ contact_form.message.id_for_label }}">Message</label>
+                {{ contact_form.message }}
+                {% for error in contact_form.message.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+                <button class="submit" type="submit">Send message</button>
+            </form>
+        </section>
     </main>
 </body>
 </html>

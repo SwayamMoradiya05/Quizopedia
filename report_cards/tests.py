@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from .models import (
     Admin,
+    ContactMessage,
     Option,
     Question,
     Student,
@@ -35,6 +36,7 @@ class SampleDataTests(TestCase):
                 admin.site.is_registered(model)
                 for model in (
                     Admin,
+                    ContactMessage,
                     Student,
                     StudentProfileChange,
                     Subject,
@@ -304,6 +306,7 @@ class AuthenticationTests(TestCase):
             Student.objects.filter(user__isnull=False).count(),
         )
         self.assertEqual(response.context["question_count"], Question.objects.count())
+        self.assertContains(response, reverse("contact_message_list"))
 
     def test_admin_can_create_question_with_four_options_for_selected_subject(self):
         admin_user = self.create_user("questionadmin", is_staff=True)
@@ -909,3 +912,288 @@ class ProfileAndCatalogTests(TestCase):
 
         self.assertEqual(subject.questions.get(), question)
         self.assertEqual(question.options.get(), answer)
+
+
+class ContactMessageTests(TestCase):
+    def create_student(self, *, email="student@example.com", profile=True):
+        user = get_user_model().objects.create_user(
+            username="contactstudent",
+            password="secure-test-password",
+            email=email,
+        )
+        student = (
+            Student.objects.create(
+                user=user,
+                name="Contact Student",
+                email="profile@example.com",
+                phone="555-0100",
+            )
+            if profile
+            else None
+        )
+        return user, student
+
+    def test_student_can_submit_contact_message_from_dashboard(self):
+        user, student = self.create_student()
+        self.client.force_login(user)
+
+        dashboard = self.client.get(reverse("student_dashboard"))
+        self.assertContains(dashboard, "Contact the administrator")
+        self.assertContains(dashboard, 'name="subject"')
+        self.assertContains(dashboard, 'name="message"')
+
+        response = self.client.post(
+            reverse("student_contact_create"),
+            {"subject": "Login help", "message": "I cannot access my quiz."},
+        )
+
+        self.assertRedirects(response, reverse("student_dashboard"))
+        contact = ContactMessage.objects.get()
+        self.assertEqual(contact.user, user)
+        self.assertEqual(contact.sender_name, student.name)
+        self.assertEqual(contact.sender_email, student.email)
+        self.assertEqual(contact.subject, "Login help")
+        self.assertEqual(contact.message, "I cannot access my quiz.")
+
+    def test_student_without_profile_uses_account_email(self):
+        user, _ = self.create_student(profile=False)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("student_contact_create"),
+            {"subject": "Question", "message": "Please contact me."},
+        )
+
+        self.assertRedirects(response, reverse("student_dashboard"))
+        self.assertEqual(ContactMessage.objects.get().sender_email, user.email)
+
+    def test_student_cannot_submit_contact_without_reply_email(self):
+        user, _ = self.create_student(email="", profile=False)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("student_contact_create"),
+            {"subject": "Question", "message": "Please contact me."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add an email address to your account")
+        self.assertFalse(ContactMessage.objects.exists())
+
+    def test_contact_subject_cannot_inject_email_headers(self):
+        user, _ = self.create_student()
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("student_contact_create"),
+            {"subject": "Question\r\nBcc: other@example.com", "message": "Help."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Enter the subject on a single line.")
+        self.assertFalse(ContactMessage.objects.exists())
+
+    def test_contact_inbox_is_admin_only(self):
+        user, student = self.create_student()
+        ContactMessage.objects.create(
+            user=user,
+            sender_name=student.name,
+            sender_email=student.email,
+            subject="A question",
+            message="A message",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("contact_message_list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_admin_can_reply_and_email_is_recorded(self):
+        user, student = self.create_student()
+        contact = ContactMessage.objects.create(
+            user=user,
+            sender_name=student.name,
+            sender_email=student.email,
+            subject="Quiz access",
+            message="I need help signing in.",
+        )
+        admin_user = get_user_model().objects.create_user(
+            username="contactadmin",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        inbox = self.client.get(reverse("contact_message_list"))
+        self.assertContains(inbox, contact.subject)
+        self.assertContains(inbox, contact.message)
+        self.assertContains(inbox, contact.sender_email)
+        self.assertContains(inbox, "Send reply by email")
+
+        response = self.client.post(
+            reverse("contact_message_reply", args=(contact.pk,)),
+            {"reply": "Please try resetting your password."},
+        )
+
+        self.assertRedirects(response, reverse("contact_message_list"))
+        contact.refresh_from_db()
+        self.assertEqual(contact.reply, "Please try resetting your password.")
+        self.assertIsNotNone(contact.replied_at)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [student.email])
+        self.assertEqual(mail.outbox[0].subject, "Re: Quiz access")
+        self.assertEqual(mail.outbox[0].body, contact.reply)
+
+        self.client.post(
+            reverse("contact_message_reply", args=(contact.pk,)),
+            {"reply": "A second reply"},
+        )
+        self.assertEqual(len(mail.outbox), 1)
+
+    @patch("report_cards.views.send_mail", side_effect=OSError("SMTP unavailable"))
+    def test_reply_is_not_recorded_when_email_cannot_be_sent(self, send_mail):
+        user, student = self.create_student()
+        contact = ContactMessage.objects.create(
+            user=user,
+            sender_name=student.name,
+            sender_email=student.email,
+            subject="Question",
+            message="Please help.",
+        )
+        admin_user = get_user_model().objects.create_user(
+            username="failedcontactadmin",
+            password="secure-test-password",
+            is_staff=True,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("contact_message_reply", args=(contact.pk,)),
+            {"reply": "A reply that cannot be sent."},
+            follow=True,
+        )
+
+        contact.refresh_from_db()
+        self.assertEqual(contact.reply, "")
+        self.assertIsNone(contact.replied_at)
+        self.assertContains(response, "The reply could not be emailed.")
+        send_mail.assert_called_once()
+
+    def test_student_cannot_send_admin_reply(self):
+        user, student = self.create_student()
+        contact = ContactMessage.objects.create(
+            user=user,
+            sender_name=student.name,
+            sender_email=student.email,
+            subject="Question",
+            message="Please help.",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("contact_message_reply", args=(contact.pk,)),
+            {"reply": "Unauthorized"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        contact.refresh_from_db()
+        self.assertEqual(contact.reply, "")
+
+
+class StudentAdminRegistrationTests(TestCase):
+    def setUp(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="studentregistrationadmin",
+            email="admin@example.com",
+            password="secure-admin-password",
+        )
+        self.client.force_login(admin_user)
+
+    def registration_data(self):
+        return {
+            "name": "New Student",
+            "email": "new.student@example.com",
+            "phone": "555-0177",
+            "username": "new.student",
+            "password1": "GarnetRiver!94Orbit",
+            "password2": "GarnetRiver!94Orbit",
+            "_save": "Save",
+        }
+
+    def test_custom_admin_dashboard_can_register_student(self):
+        dashboard = self.client.get(reverse("admin_dashboard"))
+        self.assertContains(dashboard, reverse("admin_student_create"))
+
+        page = self.client.get(reverse("admin_student_create"))
+        self.assertContains(page, "Create student account")
+        self.assertContains(page, 'name="username"')
+
+        data = self.registration_data()
+        data.pop("_save")
+
+        response = self.client.post(
+            reverse("admin_student_create"),
+            data,
+        )
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        student = Student.objects.get(email="new.student@example.com")
+        self.assertEqual(student.user.username, "new.student")
+        self.assertTrue(student.user.check_password("GarnetRiver!94Orbit"))
+        self.assertFalse(student.user.is_staff)
+
+    def test_student_cannot_access_admin_registration_page(self):
+        user = get_user_model().objects.create_user(
+            username="studentregistrationdenied",
+            password="secure-student-password",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("admin_student_create"))
+
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_admin_registration_creates_linked_student_login(self):
+        response = self.client.post(
+            reverse("admin:report_cards_student_add"),
+            self.registration_data(),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        student = Student.objects.get(email="new.student@example.com")
+        self.assertIsNotNone(student.user)
+        self.assertEqual(student.user.username, "new.student")
+        self.assertEqual(student.user.email, student.email)
+        self.assertTrue(student.user.check_password("GarnetRiver!94Orbit"))
+        self.assertFalse(student.user.is_staff)
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": student.user.username,
+                "password": "GarnetRiver!94Orbit",
+            },
+        )
+        self.assertRedirects(login_response, reverse("student_otp_verify"))
+        self.assertTrue(StudentOTP.objects.filter(student=student).exists())
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_admin_registration_rejects_mismatched_passwords(self):
+        data = self.registration_data()
+        data["password2"] = "DifferentPassword!87"
+
+        response = self.client.post(
+            reverse("admin:report_cards_student_add"),
+            data,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The two password fields did not match.")
+        self.assertFalse(
+            Student.objects.filter(email="new.student@example.com").exists()
+        )
+        self.assertFalse(
+            get_user_model().objects.filter(username="new.student").exists()
+        )

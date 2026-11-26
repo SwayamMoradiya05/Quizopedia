@@ -20,6 +20,9 @@ from django.urls import include, path
 from report_cards.views import (
     RoleBasedLoginView,
     admin_dashboard,
+    admin_student_create,
+    contact_message_list,
+    contact_message_reply,
     home,
     profile,
     question_create,
@@ -33,6 +36,7 @@ from report_cards.views import (
     subject_list,
     subject_update,
     student_dashboard,
+    student_contact_create,
     student_otp_verify,
     student_profile_edit,
 )
@@ -45,6 +49,21 @@ urlpatterns = [
     path('accounts/otp/resend/', resend_student_otp, name='resend_student_otp'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('dashboard/admin/', admin_dashboard, name='admin_dashboard'),
+    path(
+        'dashboard/admin/students/new/',
+        admin_student_create,
+        name='admin_student_create',
+    ),
+    path(
+        'dashboard/admin/contact-messages/',
+        contact_message_list,
+        name='contact_message_list',
+    ),
+    path(
+        'dashboard/admin/contact-messages/<int:message_id>/reply/',
+        contact_message_reply,
+        name='contact_message_reply',
+    ),
     path('dashboard/admin/questions/', question_list, name='question_list'),
     path('dashboard/admin/questions/new/', question_create, name='question_create'),
     path(
@@ -70,6 +89,11 @@ urlpatterns = [
         name='subject_delete',
     ),
     path('dashboard/student/', student_dashboard, name='student_dashboard'),
+    path(
+        'dashboard/student/contact/',
+        student_contact_create,
+        name='student_contact_create',
+    ),
     path('profile/', profile, name='profile'),
     path('profile/student/edit/', student_profile_edit, name='student_profile_edit'),
     path(

@@ -18,16 +18,20 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import (
+    ContactMessageForm,
+    ContactReplyForm,
     OTPVerificationForm,
     QuestionCreateForm,
     QuestionForm,
     QuestionOptionFormSet,
     QuestionUpdateOptionFormSet,
+    StudentRegistrationForm,
     StudentProfileChangeForm,
     SubjectForm,
 )
 from .models import (
     Admin,
+    ContactMessage,
     Option,
     Question,
     Student,
@@ -227,6 +231,7 @@ def admin_dashboard(request):
     context = {
         "student_count": Student.objects.count(),
         "admin_count": Admin.objects.count(),
+        "contact_message_count": ContactMessage.objects.count(),
         "registered_student_count": Student.objects.filter(
             user__isnull=False
         ).count(),
@@ -237,6 +242,27 @@ def admin_dashboard(request):
         ).order_by("-created_at", "-pk"),
     }
     return render(request, "report_cards/admin_dashboard.html", context)
+
+
+@login_required
+def admin_student_create(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    form = StudentRegistrationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            student = form.save(commit=False)
+            student.user = form.create_user()
+            student.save()
+        messages.success(request, "Student account created successfully.")
+        return redirect("admin_dashboard")
+
+    return render(
+        request,
+        "report_cards/student_registration.html",
+        {"form": form},
+    )
 
 
 @login_required
@@ -504,8 +530,109 @@ def student_dashboard(request):
                 if student
                 else request.user.get_full_name() or request.user.get_username()
             ),
+            "contact_form": ContactMessageForm(),
         },
     )
+
+
+@login_required
+@require_POST
+def student_contact_create(request):
+    if _is_admin(request.user):
+        raise PermissionDenied
+
+    form = ContactMessageForm(request.POST)
+    student = Student.objects.filter(user=request.user).first()
+    if form.is_valid():
+        sender_email = student.email if student else request.user.email
+        if not sender_email:
+            form.add_error(
+                None,
+                "Add an email address to your account before contacting the administrator.",
+            )
+        else:
+            contact_message = form.save(commit=False)
+            contact_message.user = request.user
+            contact_message.sender_name = (
+                student.name
+                if student
+                else request.user.get_full_name() or request.user.get_username()
+            )
+            contact_message.sender_email = sender_email
+            contact_message.save()
+            messages.success(
+                request,
+                "Your message has been sent to the administrator.",
+            )
+            return redirect("student_dashboard")
+
+    return render(
+        request,
+        "report_cards/student_dashboard.html",
+        {
+            "student": student,
+            "display_name": (
+                student.name
+                if student
+                else request.user.get_full_name() or request.user.get_username()
+            ),
+            "contact_form": form,
+        },
+    )
+
+
+@login_required
+def contact_message_list(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    return render(
+        request,
+        "report_cards/contact_message_list.html",
+        {"contact_messages": ContactMessage.objects.select_related("user").all()},
+    )
+
+
+@login_required
+@require_POST
+def contact_message_reply(request, message_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied
+
+    contact_message = get_object_or_404(ContactMessage, pk=message_id)
+    if contact_message.replied_at is not None:
+        messages.error(request, "A reply has already been sent for this message.")
+        return redirect("contact_message_list")
+
+    form = ContactReplyForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Enter a reply before sending.")
+        return redirect("contact_message_list")
+
+    reply = form.cleaned_data["reply"]
+    try:
+        sent_count = send_mail(
+            f"Re: {contact_message.subject}",
+            reply,
+            None,
+            [contact_message.sender_email],
+            fail_silently=False,
+        )
+    except (OSError, smtplib.SMTPException):
+        sent_count = 0
+
+    if sent_count != 1:
+        messages.error(
+            request,
+            "The reply could not be emailed. Please try again.",
+        )
+        return redirect("contact_message_list")
+
+    contact_message.reply = reply
+    contact_message.replied_at = timezone.now()
+    contact_message.save(update_fields=("reply", "replied_at"))
+    messages.success(request, "Your reply was emailed to the student.")
+    return redirect("contact_message_list")
 
 
 @login_required

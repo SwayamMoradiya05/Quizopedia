@@ -1,8 +1,18 @@
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from .models import Option, Question, StudentProfileChange, Subject
+from .models import (
+    ContactMessage,
+    Option,
+    Question,
+    Student,
+    StudentProfileChange,
+    Subject,
+)
 
 
 class OTPVerificationForm(forms.Form):
@@ -30,6 +40,89 @@ class StudentProfileChangeForm(forms.ModelForm):
     class Meta:
         model = StudentProfileChange
         fields = ("name", "email", "phone")
+
+
+class StudentRegistrationForm(forms.ModelForm):
+    username = forms.CharField(max_length=150)
+    password1 = forms.CharField(
+        label="Password",
+        strip=False,
+        widget=forms.PasswordInput,
+    )
+    password2 = forms.CharField(
+        label="Confirm password",
+        strip=False,
+        widget=forms.PasswordInput,
+    )
+
+    class Meta:
+        model = Student
+        fields = ("name", "email", "phone")
+
+    def clean_username(self):
+        username = self.cleaned_data["username"]
+        user_model = get_user_model()
+        if user_model._default_manager.filter(
+            **{user_model.USERNAME_FIELD: username}
+        ).exists():
+            raise forms.ValidationError("A user with that username already exists.")
+        return username
+
+    def clean_password2(self):
+        password1 = self.cleaned_data.get("password1")
+        password2 = self.cleaned_data["password2"]
+        if password1 != password2:
+            raise forms.ValidationError("The two password fields did not match.")
+
+        user_model = get_user_model()
+        user = user_model(
+            **{
+                user_model.USERNAME_FIELD: self.cleaned_data.get("username"),
+                "email": self.cleaned_data.get("email"),
+            }
+        )
+        try:
+            validate_password(password2, user)
+        except ValidationError as error:
+            self.add_error("password2", error)
+        return password2
+
+    def create_user(self):
+        user_model = get_user_model()
+        return user_model._default_manager.create_user(
+            **{
+                user_model.USERNAME_FIELD: self.cleaned_data["username"],
+                "email": self.cleaned_data["email"],
+                "password": self.cleaned_data["password1"],
+            }
+        )
+
+
+class ContactMessageForm(forms.ModelForm):
+    class Meta:
+        model = ContactMessage
+        fields = ("subject", "message")
+        widgets = {
+            "subject": forms.TextInput(
+                attrs={"class": "form-control", "maxlength": 150}
+            ),
+            "message": forms.Textarea(
+                attrs={"class": "form-control", "rows": 5}
+            ),
+        }
+
+    def clean_subject(self):
+        subject = self.cleaned_data["subject"]
+        if "\r" in subject or "\n" in subject:
+            raise forms.ValidationError("Enter the subject on a single line.")
+        return subject
+
+
+class ContactReplyForm(forms.Form):
+    reply = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 4}),
+        max_length=10000,
+    )
 
 
 class SubjectForm(forms.ModelForm):

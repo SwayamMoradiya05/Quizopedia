@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register student | Quizopedia</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: #f5f6f4; color: #26332f; font-family: Inter, "Segoe UI", Arial, sans-serif; }
+        header { display: flex; align-items: center; justify-content: space-between; padding: 18px clamp(20px, 6vw, 76px); border-bottom: 1px solid #e4e8e4; background: #fff; }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; }
+        .mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #29443d; color: #fff; }
+        a { color: #356348; font-size: 13px; font-weight: 650; text-decoration: none; }
+        main { width: min(620px, calc(100% - 40px)); margin: 45px auto; }
+        .eyebrow { color: #76877c; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; }
+        h1 { margin: 10px 0 8px; font-family: Georgia, "Times New Roman", serif; font-size: 40px; font-weight: 400; }
+        .sub { margin: 0 0 22px; color: #758078; font-size: 14px; line-height: 1.6; }
+        .card { padding: 26px; border: 1px solid #e4e8e4; border-radius: 12px; background: #fff; }
+        .field { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 7px; color: #42514a; font-size: 13px; font-weight: 650; }
+        input { width: 100%; padding: 11px 12px; border: 1px solid #dce2dc; border-radius: 7px; font: inherit; }
+        .help { margin: 6px 0 0; color: #758078; font-size: 12px; }
+        .error { margin: 6px 0 0; color: #9a4032; font-size: 12px; }
+        .form-error { margin-bottom: 16px; padding: 12px 14px; border-radius: 7px; background: #fff0ed; color: #8b4032; font-size: 13px; }
+        button { padding: 11px 16px; border: 0; border-radius: 7px; background: #29443d; color: #fff; cursor: pointer; font: inherit; font-weight: 650; }
+        @media (max-width: 520px) { header { padding: 15px 20px; } main { margin: 30px auto; } .card { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand"><span class="mark" aria-hidden="true">Q</span> Quizopedia</div>
+        <a href="{% url 'admin_dashboard' %}">Back to dashboard</a>
+    </header>
+    <main>
+        <div class="eyebrow">Student directory</div>
+        <h1>Register a student</h1>
+        <p class="sub">Create a student profile and sign-in account. The email address will receive the student's login verification codes.</p>
+        <section class="card">
+            <form method="post">
+                {% csrf_token %}
+                {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+                {% for field in form %}
+                    <div class="field">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+                        {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+                    </div>
+                {% endfor %}
+                <button type="submit">Create student account</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>
