@@ -19,6 +19,9 @@
         .error { background: #fff0ed; color: #8b4032; }
         .contact { margin-top: 18px; padding: 22px 24px; border: 1px solid #e4e8e4; border-radius: 12px; background: #fff; }
         .contact h2 { margin: 8px 0; font-size: 19px; }
+        .status { display: inline-block; margin-left: 8px; padding: 4px 8px; border-radius: 999px; vertical-align: middle; font: 650 11px/1.2 Inter, "Segoe UI", Arial, sans-serif; }
+        .status.replied { background: #eaf3ed; color: #356348; }
+        .status.pending { background: #fff3dc; color: #825b17; }
         .meta { margin: 0 0 14px; }
         .body { white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
         .reply { margin-top: 20px; padding-top: 18px; border-top: 1px solid #edf0ed; }
@@ -44,7 +47,13 @@
         <p class="sub">Read student questions and reply directly to their email address.</p>
         {% for contact in contact_messages %}
             <article class="contact">
-                <h2>{{ contact.subject }}</h2>
+                <h2>{{ contact.subject }}
+                    {% if contact.replied_at %}
+                        <span class="status replied">Replied</span>
+                    {% else %}
+                        <span class="status pending">Pending</span>
+                    {% endif %}
+                </h2>
                 <p class="meta">From {{ contact.sender_name }} &lt;{{ contact.sender_email }}&gt; · {{ contact.created_at|date:"N j, Y, P" }}</p>
                 <div class="body">{{ contact.message }}</div>
                 {% if contact.replied_at %}

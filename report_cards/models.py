@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
@@ -138,3 +139,78 @@ class Option(models.Model):
 
     def __str__(self):
         return self.option_text
+
+
+class TestAttempt(models.Model):
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="test_attempts",
+    )
+    subject = models.ForeignKey(
+        Subject,
+        on_delete=models.CASCADE,
+        related_name="test_attempts",
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-started_at", "-pk")
+
+    def __str__(self):
+        return f"{self.student.name} - {self.subject.name} ({self.started_at:%Y-%m-%d})"
+
+
+class TestResult(models.Model):
+    attempt = models.ForeignKey(
+        TestAttempt,
+        on_delete=models.CASCADE,
+        related_name="results",
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name="test_results",
+    )
+    selected_option = models.ForeignKey(
+        Option,
+        on_delete=models.SET_NULL,
+        related_name="test_results",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("attempt", "question"),
+                name="unique_question_per_test_attempt",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if (
+            self.attempt_id
+            and self.question_id
+            and self.attempt.subject_id != self.question.subject_id
+        ):
+            raise ValidationError(
+                {"question": "The question must belong to the attempted subject."}
+            )
+        if (
+            self.selected_option_id
+            and self.question_id
+            and self.selected_option.question_id != self.question_id
+        ):
+            raise ValidationError(
+                {"selected_option": "The selected option must belong to this question."}
+            )
+
+    @property
+    def is_correct(self):
+        return bool(self.selected_option_id and self.selected_option.is_answer)
+
+    def __str__(self):
+        return f"{self.attempt} - {self.question}"

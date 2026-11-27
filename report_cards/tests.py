@@ -17,6 +17,8 @@ from .models import (
     StudentOTP,
     StudentProfileChange,
     Subject,
+    TestAttempt,
+    TestResult,
 )
 
 
@@ -25,6 +27,19 @@ class SampleDataTests(TestCase):
         self.assertGreaterEqual(Student.objects.count(), 5)
         self.assertGreaterEqual(Subject.objects.count(), 3)
         self.assertGreaterEqual(Question.objects.count(), 10)
+        self.assertTrue(
+            all(subject.questions.count() >= 5 for subject in Subject.objects.all())
+        )
+        self.assertGreaterEqual(TestAttempt.objects.count(), 3)
+        self.assertTrue(TestResult.objects.exists())
+        self.assertTrue(
+            all(
+                result.question.subject_id == result.attempt.subject_id
+                for result in TestResult.objects.select_related(
+                    "question", "attempt__subject"
+                )
+            )
+        )
         self.assertTrue(
             all(
                 Question.objects.filter(subject=subject).exists()
@@ -42,6 +57,8 @@ class SampleDataTests(TestCase):
                     Subject,
                     Question,
                     Option,
+                    TestAttempt,
+                    TestResult,
                 )
             )
         )
@@ -1029,6 +1046,7 @@ class ContactMessageTests(TestCase):
         self.assertContains(inbox, contact.subject)
         self.assertContains(inbox, contact.message)
         self.assertContains(inbox, contact.sender_email)
+        self.assertContains(inbox, "Pending")
         self.assertContains(inbox, "Send reply by email")
 
         response = self.client.post(
@@ -1040,6 +1058,8 @@ class ContactMessageTests(TestCase):
         contact.refresh_from_db()
         self.assertEqual(contact.reply, "Please try resetting your password.")
         self.assertIsNotNone(contact.replied_at)
+        inbox = self.client.get(reverse("contact_message_list"))
+        self.assertContains(inbox, "Replied")
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [student.email])
         self.assertEqual(mail.outbox[0].subject, "Re: Quiz access")

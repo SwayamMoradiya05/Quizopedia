@@ -9,6 +9,8 @@ from .models import (
     Student,
     StudentProfileChange,
     Subject,
+    TestAttempt,
+    TestResult,
 )
 
 
@@ -111,3 +113,25 @@ class OptionAdmin(admin.ModelAdmin):
     list_display = ("option_text", "question", "is_answer")
     list_filter = ("is_answer",)
     search_fields = ("option_text", "question__question_text")
+
+
+class TestResultInline(admin.TabularInline):
+    model = TestResult
+    extra = 0
+
+
+@admin.register(TestAttempt)
+class TestAttemptAdmin(admin.ModelAdmin):
+    list_display = ("student", "subject", "started_at", "completed_at")
+    list_filter = ("subject", "completed_at")
+    search_fields = ("student__name", "student__email", "subject__name")
+    readonly_fields = ("started_at",)
+    inlines = (TestResultInline,)
+
+
+@admin.register(TestResult)
+class TestResultAdmin(admin.ModelAdmin):
+    list_display = ("attempt", "question", "selected_option", "is_correct")
+    list_filter = ("attempt__subject",)
+    search_fields = ("attempt__student__name", "question__question_text")
+    readonly_fields = ("is_correct",)
